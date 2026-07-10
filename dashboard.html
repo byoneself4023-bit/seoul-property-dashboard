@@ -25,7 +25,7 @@
       <button id="btnMonth" onclick="setGranularity('month')"
         class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white">월간</button>
     </div>
-    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
+    <span id="dataBadge" class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
   </div>
 </header>
 
@@ -87,6 +87,12 @@
 </section>
 
 <!-- ─────────────────────────────────────────────
+  실데이터 슬롯 — ingest.mjs가 이 블록에 JSON을 주입함
+  null = 실데이터 없음 → 목데이터 폴백
+───────────────────────────────────────────── -->
+<script type="application/json" id="real-data">null</script>
+
+<!-- ─────────────────────────────────────────────
   스크립트
 ───────────────────────────────────────────── -->
 <script>
@@ -113,10 +119,25 @@ const baseNonAptData = {
 const DISTRICTS = Object.keys(baseAptData);
 
 // ════════════════════════════════════════════════
-//  DataProvider — 이 객체만 교체하면 실데이터 연동 가능
-//  (나중에 실제 API 프록시로 교체할 유일한 지점)
+//  실데이터 슬롯 읽기
+//  null → 목데이터 모드, 유효한 객체 → 실데이터 모드
+// ════════════════════════════════════════════════
+const RAW = JSON.parse(document.getElementById('real-data').textContent || 'null');
+const IS_REAL = RAW !== null && typeof RAW === 'object' && RAW.byDistrict != null;
+
+// 배지 업데이트
+if (IS_REAL) {
+  document.getElementById('dataBadge').textContent = `실데이터 (기준일 ${RAW.generatedAt})`;
+}
+
+// ════════════════════════════════════════════════
+//  DataProvider — 실데이터/목데이터 공통 인터페이스
+//  공개 메서드 계약: getPeriods / getDistrictTotals /
+//                   getDistrictTrend / getSeoulTotals
 // ════════════════════════════════════════════════
 const dataProvider = (() => {
+
+  // ── 목데이터 생성 헬퍼 ─────────────────────────
 
   // 월별 사이클 멀티플라이어 (인덱스 0 = 가장 오래된 달)
   // 아파트: 완만히 감소 0.90→0.85, 비아파트: 완만히 상승 0.95→1.00
@@ -168,7 +189,7 @@ const dataProvider = (() => {
     return periods;
   }
 
-  // 구별 월별 시계열 (아파트/비아파트)
+  // 구별 월별 시계열 (아파트/비아파트) — 목데이터용
   function _districtMonthlySeq(district) {
     return _buildMonthPeriods().map((_, idx) => {
       const m = _monthMultiplier(idx);
@@ -179,7 +200,7 @@ const dataProvider = (() => {
     });
   }
 
-  // 구별 주별 시계열
+  // 구별 주별 시계열 — 목데이터용
   function _districtWeeklySeq(district) {
     const monthSeqs = _districtMonthlySeq(district);
     // 최근 월 값을 1/4.3 스케일로 축소하여 주간값 산출
@@ -194,19 +215,39 @@ const dataProvider = (() => {
     });
   }
 
+  // ── 목데이터를 정규화 구조로 변환 ─────────────────
+  // 실데이터와 동일한 형태로 빌드하여 공통 접근 경로 사용
+  function _buildMockNormalized() {
+    const weekPeriods  = _buildWeekPeriods();
+    const monthPeriods = _buildMonthPeriods();
+    const byDistrict = {};
+    for (const d of DISTRICTS) {
+      byDistrict[d] = {
+        week:  _districtWeeklySeq(d),
+        month: _districtMonthlySeq(d)
+      };
+    }
+    return { periods: { week: weekPeriods, month: monthPeriods }, byDistrict };
+  }
+
+  // ── 통합 정규화 데이터 (실 또는 목) ───────────────
+  const DATA = IS_REAL
+    ? { periods: RAW.periods, byDistrict: RAW.byDistrict }
+    : _buildMockNormalized();
+
   // ── 공개 인터페이스 ──────────────────────────────
   return {
     /** 기간 키 배열 반환 (granularity: 'week'|'month') */
     getPeriods(granularity) {
-      return granularity === 'week' ? _buildWeekPeriods() : _buildMonthPeriods();
+      return DATA.periods[granularity];
     },
 
     /** 특정 기간의 25개구 총계 {district, apt, nonApt} 배열 */
     getDistrictTotals(granularity, periodKey) {
+      const periods = DATA.periods[granularity];
+      const idx = periods.indexOf(periodKey);
       return DISTRICTS.map(d => {
-        const seq = granularity === 'week' ? _districtWeeklySeq(d) : _districtMonthlySeq(d);
-        const periods = this.getPeriods(granularity);
-        const idx = periods.indexOf(periodKey);
+        const seq = DATA.byDistrict[d][granularity];
         const v = idx >= 0 ? seq[idx] : seq[seq.length - 1];
         return { district: d, apt: v.apt, nonApt: v.nonApt };
       });
@@ -214,9 +255,7 @@ const dataProvider = (() => {
 
     /** 특정 구의 전체 기간 시계열 [{apt, nonApt}, ...] */
     getDistrictTrend(district, granularity) {
-      return granularity === 'week'
-        ? _districtWeeklySeq(district)
-        : _districtMonthlySeq(district);
+      return DATA.byDistrict[district][granularity];
     },
 
     /** 서울 전체 합계 {apt, nonApt} */
