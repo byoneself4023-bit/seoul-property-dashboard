@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울시 25개구 거래량 추이 및 시각화 대시보드</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #0f172a;
+        }
+        /* 커스텀 스크롤바 디자인 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="text-slate-100 min-height-screen p-3 md:p-6">
+
+    <!-- 헤더 영역 -->
+    <header class="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
+        <div>
+            <div class="flex items-center gap-2 text-indigo-400 font-bold tracking-wider text-xs uppercase mb-1">
+                <i class="fa-solid fa-chart-line"></i> 바른부동산 자산관리 전략 연구소 (Barun Premium Data)
+            </div>
+            <h1 class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-400 bg-clip-text text-transparent">
+                서울시 25개구 주택 거래 다차원 분석 대시보드
+            </h1>
+            <p class="text-slate-400 text-xs mt-1">2022년 ~ 현재까지의 아파트 vs 비아파트 거래 트렌드 및 공간 규격·금액대 정밀 분류</p>
+        </div>
+        <div class="flex items-center gap-3 bg-slate-800/80 border border-slate-700/50 p-2.5 rounded-xl shadow-lg">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-[11px] font-semibold text-slate-300">실시간 데이터 시각화 시뮬레이터</span>
+        </div>
+    </header>
+
+    <!-- 메인 대시보드 그리드 -->
+    <main class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 좌측 열: 컨트롤러 및 카토그램 지도 (7 Cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-5">
+            
+            <!-- 컨트롤러 박스 -->
+            <div class="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
+                    <h3 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-regular fa-calendar-days text-indigo-400"></i> 타임라인 및 연도별 퀵 필터
+                    </h3>
+                    
+                    <!-- 연도 선택 탭 필터 -->
+                    <div class="flex bg-slate-850 border border-slate-800 p-1 rounded-xl gap-1 text-xs">
+                        <button onclick="filterYear('ALL')" id="yrBtn-ALL" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">전체</button>
+                        <button onclick="filterYear('2022')" id="yrBtn-2022" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">22년</button>
+                        <button onclick="filterYear('2023')" id="yrBtn-2023" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">23년</button>
+                        <button onclick="filterYear('2024')" id="yrBtn-2024" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">24년</button>
+                        <button onclick="filterYear('2025')" id="yrBtn-2025" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">25년</button>
+                        <button onclick="filterYear('2026')" id="yrBtn-2026" class="px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all">26년</button>
+                    </div>
+                </div>
+                
+                <!-- 슬라이더 영역 -->
+                <div class="flex items-center gap-3 mt-4">
+                    <span class="text-[10px] font-bold text-slate-500" id="sliderMinLabel">2022.01</span>
+                    <input type="range" id="timeSlider" min="0" max="52" value="52" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                    <span class="text-[10px] font-bold text-slate-300" id="sliderMaxLabel">2026.05</span>
+                </div>
+                
+                <!-- 선택된 월 출력 및 자동재생 컨트롤 -->
+                <div class="flex justify-between items-center mt-4 bg-slate-950/40 border border-slate-850 p-2.5 rounded-xl">
+                    <button id="playBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
+                        <i id="playIcon" class="fa-solid fa-play"></i> <span id="playText">자동 재생</span>
+                    </button>
+                    <span class="text-xl font-extrabold text-indigo-400 tracking-wide" id="selectedMonthLabel">
+                        2026년 05월
+                    </span>
+                </div>
+            </div>
+
+            <!-- 격자형 서울 카토그램 지도 -->
+            <div class="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex flex-col items-center">
+                <div class="w-full flex justify-between items-center mb-4">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-200">서울시 거래 활성도 지형도</h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">선택한 월의 아파트+비아파트 통합 거래 집중도를 3단계로 분류합니다.</p>
+                    </div>
+                    <!-- 범례 -->
+                    <div class="flex gap-3 text-[10px] font-semibold">
+                        <div class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded bg-indigo-600"></span>
+                            <span class="text-slate-300">상위 (High)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded bg-blue-500/50"></span>
+                            <span class="text-slate-300">중위 (Mid)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded bg-slate-800 border border-slate-700"></span>
+                            <span class="text-slate-400">하위 (Low)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 지형도 격자 렌더링 영역 -->
+                <div class="grid grid-cols-8 gap-2 max-w-lg w-full py-2" id="cartogramMap">
+                    <!-- 자바스크립트로 동적 셀 삽입 -->
+                </div>
+                
+                <p class="text-[11px] text-slate-500 mt-2"><i class="fa-solid fa-info-circle"></i> 지도 격자 셀을 누르면 해당 자치구의 정밀 분석 데이터를 즉시 로드합니다.</p>
+            </div>
+
+        </div>
+
+        <!-- 우측 열: 통계 수치 및 차트 영역 (5 Cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-5">
+            
+            <!-- 선택구 데이터 분석 및 동적 그래프 -->
+            <div class="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl flex-grow flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <span class="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider" id="regionLabel">서울 동남권</span>
+                            <h2 class="text-xl font-extrabold text-white mt-0.5" id="selectedDistrictName">강동구</h2>
+                        </div>
+                        <span class="text-[11px] bg-indigo-950/60 border border-indigo-900/50 text-indigo-300 px-2.5 py-0.5 rounded-full font-bold shadow-sm" id="rankBadge">
+                            종합 순위: 3위
+                        </span>
+                    </div>
+
+                    <!-- 이달의 주요 지표 수치 -->
+                    <div class="grid grid-cols-2 gap-3 my-3">
+                        <div class="bg-slate-800/40 border border-slate-800 p-3 rounded-xl">
+                            <p class="text-[11px] text-slate-400">아파트 거래</p>
+                            <div class="flex items-baseline gap-0.5 mt-0.5">
+                                <span class="text-xl font-black text-slate-100" id="statAptVal">385</span>
+                                <span class="text-[10px] text-slate-400">건</span>
+                            </div>
+                        </div>
+                        <div class="bg-indigo-950/20 border border-indigo-900/30 p-3 rounded-xl">
+                            <p class="text-[11px] text-indigo-300">비아파트 거래</p>
+                            <div class="flex items-baseline gap-0.5 mt-0.5">
+                                <span class="text-xl font-black text-indigo-400" id="statNonAptVal">412</span>
+                                <span class="text-[10px] text-indigo-300">건</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 데이터 분류 탭 토글 -->
+                    <div class="flex bg-slate-950/60 p-1 border border-slate-850 rounded-xl gap-1 text-[11px] mb-3">
+                        <button onclick="switchChartMode('trend')" id="chartTab-trend" class="flex-1 py-1.5 rounded-lg text-center font-bold transition-all bg-indigo-600 text-white">거래 추이</button>
+                        <button onclick="switchChartMode('room')" id="chartTab-room" class="flex-1 py-1.5 rounded-lg text-center font-bold transition-all text-slate-400 hover:text-white">공간 규격별</button>
+                        <button onclick="switchChartMode('price')" id="chartTab-price" class="flex-1 py-1.5 rounded-lg text-center font-bold transition-all text-slate-400 hover:text-white">금액대별(비아파트)</button>
+                    </div>
+
+                    <!-- 차트 기간 선택 및 스크롤 바 (거래 추이 모드에서만 동적 표출) -->
+                    <div id="chartRangeSelector" class="flex items-center justify-between gap-2 bg-slate-950/40 border border-slate-850 p-2 rounded-xl mb-3 text-xs">
+                        <span class="text-slate-400 font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-sliders text-indigo-400"></i> 분석 범위:
+                        </span>
+                        <div class="flex items-center gap-1 text-[11px]">
+                            <select id="chartStartMonth" onchange="onChartRangeChange()" class="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"></select>
+                            <span class="text-slate-600">~</span>
+                            <select id="chartEndMonth" onchange="onChartRangeChange()" class="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-200 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"></select>
+                        </div>
+                        <!-- 좌우 스크롤 네비게이션 버튼 -->
+                        <div class="flex gap-1">
+                            <button onclick="shiftChartRange(-6)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition-all" title="6개월 이전으로 스크롤"><i class="fa-solid fa-angle-left"></i> 이전</button>
+                            <button onclick="shiftChartRange(6)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition-all" title="6개월 이후로 스크롤">다음 <i class="fa-solid fa-angle-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- 차트 캔버스 컨테이너 -->
+                    <div class="h-56 relative">
+                        <canvas id="districtTrendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 분석 코멘트 출력부 -->
+                <div class="mt-4 border-t border-slate-800 pt-3">
+                    <p class="text-[11px] text-slate-400 leading-relaxed" id="districtAnalysisText">
+                        강동구는 주택임대사업법령 및 대출 규제 속에서 비아파트(다세대·연립) 거래량이 아파트를 역전하는 흐름이 뚜렷해지고 있습니다.
+                    </p>
+                </div>
+            </div>
+
+            <!-- 서울 랭킹 리스트 박스 -->
+            <div class="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
+                <h3 class="text-xs font-bold text-slate-200 mb-3 flex items-center gap-1.5">
+                    <i class="fa-solid fa-trophy text-amber-500"></i> 이달의 거래량 랭킹 (Top 5)
+                </h3>
+                <div class="flex flex-col gap-2.5" id="topRankingContainer">
+                    <!-- 자바스크립트로 랭킹 아이템 렌더링 -->
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- 푸터 영역 -->
+    <footer class="max-w-7xl mx-auto mt-8 border-t border-slate-800 pt-4 pb-6 flex flex-col md:flex-row justify-between items-center gap-3">
+        <p class="text-[10px] text-slate-500">© 2026 바른공인중개사사무소 & 자산관리 그룹. 본 시뮬레이션 데이터는 실거래 지표 기반 정형화 모델입니다.</p>
+        <div class="flex gap-4 text-[10px] text-slate-400">
+            <span class="hover:text-white transition-all cursor-pointer">개인정보처리방침</span>
+            <span class="hover:text-white transition-all cursor-pointer">서비스이용약관</span>
+            <span class="hover:text-white transition-all cursor-pointer">데이터 백필 가이드</span>
+        </div>
+    </footer>
+
+    <!-- 양방향 제어 스크립트 및 시뮬레이션 데이터베이스 -->
+    <script>
+        // 53개월 시계열 레이블 배열 자동 생성 (2022.01 ~ 2026.05)
+        const startYear = 2022;
+        const endYear = 2026;
+        const endMonth = 5;
+        const months = [];
+        
+        for (let y = startYear; y <= endYear; y++) {
+            const maxM = (y === endYear) ? endMonth : 12;
+            for (let m = 1; m <= maxM; m++) {
+                months.push(`${y}.${String(m).padStart(2, '0')}`);
+            }
+        }
+
+        // 서울 권역 분류 정보 정의
+        const regions = {
+            "강동구": "동남권", "강남구": "동남권", "서초구": "동남권", "송파구": "동남권",
+            "성북구": "동북권", "동대문구": "동북권", "강북구": "동북권", "도봉구": "동북권", "노원구": "동북권",
+            "중랑구": "동북권", "광진구": "동북권", "성동구": "동북권",
+            "은평구": "서북권", "서대문구": "서북권", "마포구": "서북권",
+            "강서구": "서남권", "양천구": "서남권", "구로구": "서남권", "금천구": "서남권", "영등포구": "서남권", "동작구": "서남권", "관악구": "서남권",
+            "종로구": "도심권", "중구": "도심권", "용산구": "도심권"
+        };
+
+        // 2026.05 기준 타겟 최종 거래량 데이터베이스
+        const baseAptData = {
+            "강동구": 385, "강남구": 294, "서초구": 241, "송파구": 412, "성북구": 356, "동대문구": 298,
+            "강북구": 112, "도봉구": 184, "노원구": 512, "중랑구": 165, "광진구": 142, "성동구": 311,
+            "은평구": 245, "서대문구": 231, "마포구": 328, "강서구": 289, "양천구": 315, "구로구": 264,
+            "금천구": 98, "영등포구": 295, "동작구": 214, "관악구": 152, "종로구": 64, "중구": 115, "용산구": 142
+        };
+
+        const baseNonAptData = {
+            "강동구": 412, "강남구": 185, "서초구": 198, "송파구": 345, "성북구": 584, "동대문구": 421,
+            "강북구": 389, "도봉구": 265, "노원구": 211, "중랑구": 498, "광진구": 452, "성동구": 142,
+            "은평구": 612, "서대문구": 311, "마포구": 215, "강서구": 642, "양천구": 298, "구로구": 342,
+            "금천구": 276, "영등포구": 184, "동작구": 356, "관악구": 521, "종로구": 185, "중구": 132, "용산구": 198
+        };
+
+        // 거시적 부동산 경제 사이클 커브 곡선 자동 생성
+        const database = {};
+        const multipliers = [];
+        for (let i = 0; i < 53; i++) {
+            let aptM, nonAptM;
+            if (i < 12) { // 22년: 하락기 진입 (아파트 및 빌라 동반 약세 흐름)
+                const t = i / 11;
+                aptM = 1.3 - t * 0.9;
+                nonAptM = 0.9 - t * 0.45;
+            } else if (i < 24) { // 23년: 전세사기 포비아 속 아파트 거래 빙하기
+                const t = (i - 12) / 11;
+                aptM = 0.4 + t * 0.1;
+                nonAptM = 0.45 - t * 0.1;
+            } else if (i < 36) { // 24년: 점진적 하방 다지기 및 완만한 회복 국면
+                const t = (i - 24) / 11;
+                aptM = 0.5 + t * 0.25;
+                nonAptM = 0.35 + t * 0.15;
+            } else if (i < 48) { // 25년: 전세대란 본격화로 대체 주거 빌라 수요 급증
+                const t = (i - 36) / 11;
+                aptM = 0.75 + t * 0.2;
+                nonAptM = 0.5 + t * 0.45;
+            } else { // 26년: 금융 대출 규제 강화 속 비아파트 시장 독주 체제
+                const t = (i - 48) / 4;
+                aptM = 0.95 - t * 0.05;
+                nonAptM = 0.95 + t * 0.05;
+            }
+            multipliers.push({ apt: aptM, nonApt: nonAptM });
+        }
+
+        // 세부 서브 카테고리 구성 비율 설정
+        Object.keys(baseAptData).forEach(district => {
+            const aptSeq = multipliers.map(m => Math.max(5, Math.round(baseAptData[district] * m.apt)));
+            const nonAptSeq = multipliers.map(m => Math.max(5, Math.round(baseNonAptData[district] * m.nonApt)));
+            
+            let studioShare = 0.35;
+            let twoRoomShare = 0.45;
+            if (["관악구", "마포구", "종로구", "중구"].includes(district)) {
+                studioShare = 0.55;
+                twoRoomShare = 0.30;
+            } else if (["강동구", "은평구", "강서구", "중랑구"].includes(district)) {
+                studioShare = 0.20;
+                twoRoomShare = 0.60;
+            }
+            const threeRoomShare = 1.0 - (studioShare + twoRoomShare);
+
+            let priceUnder3 = 0.50;
+            let priceUnder6 = 0.40;
+            if (["강남구", "서초구", "송파구", "용산구"].includes(district)) {
+                priceUnder3 = 0.15;
+                priceUnder6 = 0.55;
+            }
+            const priceOver6 = 1.0 - (priceUnder3 + priceUnder6);
+
+            database[district] = {
+                apt: aptSeq,
+                nonApt: nonAptSeq,
+                shares: {
+                    studio: studioShare,
+                    twoRoom: twoRoomShare,
+                    threeRoom: threeRoomShare,
+                    under3: priceUnder3,
+                    under6: priceUnder6,
+                    over6: priceOver6
+                }
+            };
+        });
+
+        // 격자형 배치 레이아웃 설정 (8열 x 7행)
+        const cartogramLayout = [
+            [null, null, null, "도봉구", "노원구", null, null, null],
+            [null, null, "강북구", "성북구", "중랑구", null, null, null],
+            [null, "은평구", "서대문구", "종로구", "동대문구", "광진구", "강동구", null],
+            [null, "마포구", "중구", "성동구", null, null, "송파구", null],
+            ["강서구", "양천구", "영등포구", "용산구", "서초구", "강남구", null, null],
+            [null, "구로구", "동작구", "관악구", null, null, null, null],
+            [null, "금천구", null, null, null, null, null, null]
+        ];
+
+        // 대시보드 상태 변수 정의
+        let currentMonthIndex = 52; // 기본값: 2026.05
+        let selectedDistrict = "강동구";
+        let isPlaying = false;
+        let playInterval = null;
+        let trendChart = null;
+        let chartMode = 'trend'; // 'trend', 'room', 'price'
+        let currentYearFilter = 'ALL';
+
+        // 엘리먼트 캐싱
+        const timeSlider = document.getElementById('timeSlider');
+        const selectedMonthLabel = document.getElementById('selectedMonthLabel');
+        const playBtn = document.getElementById('playBtn');
+        const playIcon = document.getElementById('playIcon');
+        const playText = document.getElementById('playText');
+        const cartogramMap = document.getElementById('cartogramMap');
+
+        const statAptVal = document.getElementById('statAptVal');
+        const statNonAptVal = document.getElementById('statNonAptVal');
+        const selectedDistrictName = document.getElementById('selectedDistrictName');
+        const regionLabel = document.getElementById('regionLabel');
+        const rankBadge = document.getElementById('rankBadge');
+        const topRankingContainer = document.getElementById('topRankingContainer');
+        const districtAnalysisText = document.getElementById('districtAnalysisText');
+
+        // 카토그램 지도 활성 렌더링 함수
+        function renderCartogram() {
+            cartogramMap.innerHTML = '';
+            
+            const totalVolumes = Object.keys(database).map(d => {
+                return database[d].apt[currentMonthIndex] + database[d].nonApt[currentMonthIndex];
+            }).sort((a, b) => b - a);
+            
+            const highThreshold = totalVolumes[7];
+            const midThreshold = totalVolumes[16];
+
+            cartogramLayout.forEach(row => {
+                row.forEach(cell => {
+                    const gridCell = document.createElement('div');
+                    
+                    if (cell === null) {
+                        gridCell.className = "h-14 bg-transparent";
+                    } else {
+                        const totalVol = database[cell].apt[currentMonthIndex] + database[cell].nonApt[currentMonthIndex];
+                        let tierClass = "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700";
+                        let ringClass = "focus:ring-slate-600";
+                        
+                        if (totalVol >= highThreshold) {
+                            tierClass = "bg-indigo-600/95 hover:bg-indigo-500 border-indigo-400 text-white shadow-lg shadow-indigo-600/10";
+                            ringClass = "focus:ring-indigo-400";
+                        } else if (totalVol >= midThreshold) {
+                            tierClass = "bg-blue-500/40 hover:bg-blue-400/50 border-blue-400/20 text-slate-100";
+                            ringClass = "focus:ring-blue-400";
+                        }
+                        
+                        if (cell === selectedDistrict) {
+                            tierClass += " ring-2 ring-amber-500 border-amber-400";
+                        }
+
+                        gridCell.className = `h-14 rounded-xl border flex flex-col justify-center items-center cursor-pointer transition-all ${tierClass} ${ringClass} focus:outline-none p-1`;
+                        gridCell.innerHTML = `
+                            <span class="text-[10px] font-extrabold tracking-tight block truncate w-full text-center">${cell.replace('구', '')}</span>
+                            <span class="text-[9px] font-bold opacity-80 block">${totalVol}건</span>
+                        `;
+                        gridCell.onclick = () => selectDistrict(cell);
+                    }
+                    cartogramMap.appendChild(gridCell);
+                });
+            });
+        }
+
+        // 자치구 마우스 클릭 바인딩
+        function selectDistrict(district) {
+            selectedDistrict = district;
+            updateDistrictPanel();
+            renderCartogram();
+        }
+
+        // 종합 거래 활성화 순위 계산
+        function getDistrictRank(district) {
+            const list = Object.keys(database).map(d => ({
+                name: d,
+                total: database[d].apt[currentMonthIndex] + database[d].nonApt[currentMonthIndex]
+            })).sort((a, b) => b.total - a.total);
+            return list.findIndex(item => item.name === district) + 1;
+        }
+
+        // 실무형 분석 리포팅 분석 코멘터리 생성
+        function getDynamicAnalysisComment(district, aptVal, nonAptVal) {
+            const ratio = ((nonAptVal / (aptVal + nonAptVal)) * 100).toFixed(1);
+            const shares = database[district].shares;
+            
+            if (nonAptVal > aptVal) {
+                return `<strong>${district}</strong>은 비아파트 거래 비율이 <strong>${ratio}%</strong>로 강한 하방경직성을 증명합니다. 특히 투룸형 이하(${Math.round((shares.studio+shares.twoRoom)*100)}%) 공간수요와 실속형 가격대 매칭율이 높아, 자산 포지셔닝에 최적의 요건을 제공합니다.`;
+            } else {
+                return `<strong>${district}</strong>은 아파트 강세 지역이나, 전세대란발 풍선효과로 빌라 및 소가구 룸 규격 거래량이 최근 급증하는 '갭 메우기' 정국이 뚜렷하게 관측됩니다.`;
+            }
+        }
+
+        // 우측 지표 수치 업데이트 및 차트 연동 트리거
+        function updateDistrictPanel() {
+            selectedDistrictName.innerText = selectedDistrict;
+            regionLabel.innerText = regions[selectedDistrict];
+            
+            const aptVal = database[selectedDistrict].apt[currentMonthIndex];
+            const nonAptVal = database[selectedDistrict].nonApt[currentMonthIndex];
+            
+            statAptVal.innerText = aptVal.toLocaleString();
+            statNonAptVal.innerText = nonAptVal.toLocaleString();
+            
+            const rank = getDistrictRank(selectedDistrict);
+            rankBadge.innerText = `종합 순위: ${rank}위`;
+            
+            districtAnalysisText.innerHTML = getDynamicAnalysisComment(selectedDistrict, aptVal, nonAptVal);
+
+            updateChartData();
+        }
+
+        // 전체 기간 및 필터링된 연도별 차트 렌더링 로직 (슬라이스 및 범위 직접 설정 반영)
+        function updateChartData() {
+            if (!trendChart) return;
+
+            const districtData = database[selectedDistrict];
+
+            if (chartMode === 'trend') {
+                // 시작일 및 종료일 셀렉터 수치를 읽어 동적으로 배열을 슬라이싱
+                const startIdx = parseInt(document.getElementById('chartStartMonth').value);
+                const endIdx = parseInt(document.getElementById('chartEndMonth').value) + 1; // slice 범위 지정을 위해 +1 적용
+                
+                trendChart.config.type = 'bar';
+                trendChart.data.labels = months.slice(startIdx, endIdx);
+                trendChart.data.datasets = [
+                    {
+                        label: '아파트',
+                        data: districtData.apt.slice(startIdx, endIdx),
+                        backgroundColor: 'rgba(148, 163, 184, 0.4)',
+                        borderColor: 'rgba(148, 163, 184, 0.8)',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    },
+                    {
+                        label: '비아파트',
+                        data: districtData.nonApt.slice(startIdx, endIdx),
+                        backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                        borderColor: 'rgba(99, 102, 241, 1)',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    }
+                ];
+                trendChart.options.scales.x.display = true;
+                trendChart.options.scales.y.display = true;
+            } 
+            else if (chartMode === 'room') {
+                // 특정 월별 공간 규격 비율 데이터 변환 (원룸, 투룸, 쓰리룸)
+                const totalNonApt = districtData.nonApt[currentMonthIndex];
+                const totalApt = districtData.apt[currentMonthIndex];
+                const grandTotal = totalNonApt + totalApt;
+                
+                const studioCount = Math.round(grandTotal * districtData.shares.studio);
+                const twoRoomCount = Math.round(grandTotal * districtData.shares.twoRoom);
+                const threeRoomCount = Math.max(0, grandTotal - (studioCount + twoRoomCount));
+
+                trendChart.config.type = 'doughnut';
+                trendChart.data.labels = ['원룸형 (스튜디오)', '투룸형 (세미패밀리)', '쓰리룸 이상'];
+                trendChart.data.datasets = [{
+                    data: [studioCount, twoRoomCount, threeRoomCount],
+                    backgroundColor: ['#22c55e', '#6366f1', '#e11d48'],
+                    borderWidth: 0,
+                    hoverOffset: 6
+                }];
+                trendChart.options.scales.x.display = false;
+                trendChart.options.scales.y.display = false;
+            } 
+            else if (chartMode === 'price') {
+                // 특정 월별 비아파트 금액대별 구성 비율 
+                const totalNonApt = districtData.nonApt[currentMonthIndex];
+                const price1 = Math.round(totalNonApt * districtData.shares.under3);
+                const price2 = Math.round(totalNonApt * districtData.shares.under6);
+                const price3 = Math.max(0, totalNonApt - (price1 + price2));
+
+                trendChart.config.type = 'pie';
+                trendChart.data.labels = ['3억 이하', '3억 초과 ~ 6억 이하', '6억 초과'];
+                trendChart.data.datasets = [{
+                    data: [price1, price2, price3],
+                    backgroundColor: ['#38bdf8', '#fbbf24', '#a855f7'],
+                    borderWidth: 0,
+                    hoverOffset: 6
+                }];
+                trendChart.options.scales.x.display = false;
+                trendChart.options.scales.y.display = false;
+            }
+
+            trendChart.update();
+        }
+
+        // 서브 차트 모드 스위칭 (기간 선택 필터 노출 제어 추가)
+        function switchChartMode(mode) {
+            chartMode = mode;
+            ['trend', 'room', 'price'].forEach(m => {
+                const btn = document.getElementById(`chartTab-${m}`);
+                if (m === mode) {
+                    btn.className = "flex-1 py-1.5 rounded-lg text-center font-bold transition-all bg-indigo-600 text-white";
+                } else {
+                    btn.className = "flex-1 py-1.5 rounded-lg text-center font-bold transition-all text-slate-400 hover:text-white";
+                }
+            });
+
+            // 거래 추이 탭에서만 '기간 분석 조절 바'를 렌더링하도록 예외 처리
+            const rangeSelector = document.getElementById('chartRangeSelector');
+            if (mode === 'trend') {
+                rangeSelector.classList.remove('hidden');
+                rangeSelector.classList.add('flex');
+            } else {
+                rangeSelector.classList.remove('flex');
+                rangeSelector.classList.add('hidden');
+            }
+
+            updateChartData();
+        }
+
+        // 연도 퀵 필터 컨트롤 (드롭다운과 연동되도록 수정)
+        function filterYear(year) {
+            currentYearFilter = year;
+            
+            // 필터링 버튼 강조 스타일 교체
+            ['ALL', '2022', '2023', '2024', '2025', '2026'].forEach(y => {
+                const btn = document.getElementById(`yrBtn-${y}`);
+                if (y === year) {
+                    btn.className = "px-2.5 py-1 bg-indigo-600 rounded-lg text-white font-semibold transition-all";
+                } else {
+                    btn.className = "px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all";
+                }
+            });
+
+            if (isPlaying) togglePlayback();
+
+            let startIdx, endIdx;
+            if (year === 'ALL') {
+                startIdx = 0;
+                endIdx = 52;
+                timeSlider.min = "0";
+                timeSlider.max = "52";
+                document.getElementById('sliderMinLabel').innerText = "2022.01";
+                document.getElementById('sliderMaxLabel').innerText = "2026.05";
+                onMonthChange(52); // 전체 모드 시 최신 데이터 상태로 이동
+            } else {
+                if (year === '2022') { startIdx = 0; endIdx = 11; }
+                else if (year === '2023') { startIdx = 12; endIdx = 23; }
+                else if (year === '2024') { startIdx = 24; endIdx = 35; }
+                else if (year === '2025') { startIdx = 36; endIdx = 47; }
+                else if (year === '2026') { startIdx = 48; endIdx = 52; }
+
+                timeSlider.min = String(startIdx);
+                timeSlider.max = String(endIdx);
+                timeSlider.value = String(startIdx);
+                
+                document.getElementById('sliderMinLabel').innerText = months[startIdx];
+                document.getElementById('sliderMaxLabel').innerText = months[endIdx];
+                onMonthChange(startIdx);
+            }
+
+            // 시작 / 종료 드롭다운 셀렉터 수치 자동 동기화
+            document.getElementById('chartStartMonth').value = startIdx;
+            document.getElementById('chartEndMonth').value = endIdx;
+        }
+
+        // 차트 개별 셀렉터 범위 변경 감지 및 검증
+        function onChartRangeChange() {
+            const startSelect = document.getElementById('chartStartMonth');
+            const endSelect = document.getElementById('chartEndMonth');
+            let startIdx = parseInt(startSelect.value);
+            let endIdx = parseInt(endSelect.value);
+
+            // 예외 방지: 시작 날짜가 종료 날짜보다 클 경우 동적 맞춤 교정
+            if (startIdx > endIdx) {
+                startSelect.value = endIdx;
+                startIdx = endIdx;
+            }
+
+            // 퀵 연도 탭 하이라이트 클래스 동기화 해제 (사용자 커스텀 범위 지정이 우선됨)
+            clearYearFilterHighlight();
+            updateChartData();
+        }
+
+        // 커스텀 기간 설정 시 연도 퀵필터의 활성 하이라이트 상태 재조정
+        function clearYearFilterHighlight() {
+            const startIdx = parseInt(document.getElementById('chartStartMonth').value);
+            const endIdx = parseInt(document.getElementById('chartEndMonth').value);
+
+            let matchedYear = null;
+            if (startIdx === 0 && endIdx === 52) matchedYear = 'ALL';
+            else if (startIdx === 0 && endIdx === 11) matchedYear = '2022';
+            else if (startIdx === 12 && endIdx === 23) matchedYear = '2023';
+            else if (startIdx === 24 && endIdx === 35) matchedYear = '2024';
+            else if (startIdx === 36 && endIdx === 47) matchedYear = '2025';
+            else if (startIdx === 48 && endIdx === 52) matchedYear = '2026';
+
+            currentYearFilter = matchedYear || 'CUSTOM';
+
+            ['ALL', '2022', '2023', '2024', '2025', '2026'].forEach(y => {
+                const btn = document.getElementById(`yrBtn-${y}`);
+                if (y === matchedYear) {
+                    btn.className = "px-2.5 py-1 bg-indigo-600 rounded-lg text-white font-semibold transition-all";
+                } else {
+                    btn.className = "px-2.5 py-1 rounded-lg text-slate-400 hover:text-white font-semibold transition-all";
+                }
+            });
+        }
+
+        // 차트 타임프레임 스크롤(좌우 쉬프트) 엔진
+        function shiftChartRange(offset) {
+            const startSelect = document.getElementById('chartStartMonth');
+            const endSelect = document.getElementById('chartEndMonth');
+            let startIdx = parseInt(startSelect.value);
+            let endIdx = parseInt(endSelect.value);
+
+            const windowSize = endIdx - startIdx; // 사용자가 설정한 보기 기간 규격 보존
+
+            let newStart = startIdx + offset;
+            let newEnd = endIdx + offset;
+
+            // 리미트 바운더리 체크 및 클램핑 교정
+            if (newStart < 0) {
+                newStart = 0;
+                newEnd = newStart + windowSize;
+            }
+            if (newEnd > 52) {
+                newEnd = 52;
+                newStart = newEnd - windowSize;
+                if (newStart < 0) newStart = 0;
+            }
+
+            startSelect.value = newStart;
+            endSelect.value = newEnd;
+
+            onChartRangeChange();
+        }
+
+        // 기간 제어용 이중 셀렉터 노드 생성 및 바인딩
+        function initChartRangeDropdowns() {
+            const startSelect = document.getElementById('chartStartMonth');
+            const endSelect = document.getElementById('chartEndMonth');
+
+            startSelect.innerHTML = '';
+            endSelect.innerHTML = '';
+
+            months.forEach((m, idx) => {
+                const optStart = document.createElement('option');
+                optStart.value = idx;
+                optStart.innerText = m;
+                startSelect.appendChild(optStart);
+
+                const optEnd = document.createElement('option');
+                optEnd.value = idx;
+                optEnd.innerText = m;
+                endSelect.appendChild(optEnd);
+            });
+
+            // 기본 초깃값 설정: 전체 기간 표출 (2022.01 ~ 2026.05)
+            startSelect.value = 0;
+            endSelect.value = 52;
+        }
+
+        // 이달의 상위 랭킹 5개 자치구 렌더링
+        function renderTopRankings() {
+            const sortedList = Object.keys(database).map(d => {
+                const apt = database[d].apt[currentMonthIndex];
+                const nonApt = database[d].nonApt[currentMonthIndex];
+                return { name: d, apt, nonApt, total: apt + nonApt };
+            }).sort((a, b) => b.total - a.total).slice(0, 5);
+
+            topRankingContainer.innerHTML = '';
+            sortedList.forEach((item, index) => {
+                const ratio = ((item.nonApt / item.total) * 100).toFixed(0);
+                const row = document.createElement('div');
+                row.className = "flex justify-between items-center bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800/60 p-2.5 rounded-xl cursor-pointer transition-all";
+                row.onclick = () => selectDistrict(item.name);
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="w-5 h-5 flex items-center justify-center rounded-md font-extrabold text-[11px] ${
+                            index === 0 ? 'bg-amber-500 text-slate-950' : 
+                            index === 1 ? 'bg-slate-300 text-slate-900' : 
+                            index === 2 ? 'bg-amber-700 text-white' : 'bg-slate-700 text-slate-300'
+                        }">${index + 1}</span>
+                        <span class="text-xs font-bold text-slate-200">${item.name}</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-right">
+                        <div>
+                            <span class="text-[10px] text-slate-400">총 ${item.total}건</span>
+                            <span class="text-[9px] font-semibold text-indigo-400 block">비아파트 ${ratio}%</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-slate-600 text-[10px]"></i>
+                    </div>
+                `;
+                topRankingContainer.appendChild(row);
+            });
+        }
+
+        // Chart.js 인스턴스 구축 및 테마 세팅
+        function initChart() {
+            const ctx = document.getElementById('districtTrendChart').getContext('2d');
+            
+            Chart.defaults.font.family = "'Pretendard', sans-serif";
+            Chart.defaults.color = '#94a3b8';
+
+            trendChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                font: { size: 10, weight: 'bold' },
+                                color: '#e2e8f0'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleColor: '#f8fafc',
+                            bodyColor: '#cbd5e1',
+                            borderColor: '#334155',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+                        y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 } } }
+                    }
+                }
+            });
+        }
+
+        // 타임라인 슬라이더 조작 시 데이터 인터랙션 싱크 매칭
+        function onMonthChange(index) {
+            currentMonthIndex = parseInt(index);
+            const m = months[currentMonthIndex];
+            const yearStr = m.split('.')[0] + '년';
+            const monthStr = m.split('.')[1] + '월';
+            
+            selectedMonthLabel.innerText = `${yearStr} ${monthStr}`;
+            timeSlider.value = String(currentMonthIndex);
+            
+            renderCartogram();
+            updateDistrictPanel();
+            renderTopRankings();
+        }
+
+        // 슬라이더 재생엔진 루프 제어
+        function togglePlayback() {
+            if (isPlaying) {
+                clearInterval(playInterval);
+                playIcon.className = "fa-solid fa-play";
+                playText.innerText = "자동 재생";
+                playBtn.className = "px-4 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-600/20";
+                isPlaying = false;
+            } else {
+                playIcon.className = "fa-solid fa-pause";
+                playText.innerText = "일시 정지";
+                playBtn.className = "px-4 py-2 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-amber-600/20";
+                isPlaying = true;
+                
+                const maxVal = parseInt(timeSlider.max);
+                const minVal = parseInt(timeSlider.min);
+
+                playInterval = setInterval(() => {
+                    let nextIndex = currentMonthIndex + 1;
+                    if (nextIndex > maxVal) nextIndex = minVal;
+                    onMonthChange(nextIndex);
+                }, 1500);
+            }
+        }
+
+        // 슬라이더 이벤트 바인딩
+        timeSlider.addEventListener('input', (e) => {
+            if (isPlaying) togglePlayback();
+            onMonthChange(e.target.value);
+        });
+        
+        playBtn.addEventListener('click', togglePlayback);
+
+        // 첫 구동 시 기본 초기화
+        window.onload = function() {
+            initChart();
+            initChartRangeDropdowns(); // 범위 변경 셀렉터 초깃값 생성
+            filterYear('ALL'); // 전체 시계열 스탠스로 로드 시작
+        };
+    </script>
+</body>
+</html>
