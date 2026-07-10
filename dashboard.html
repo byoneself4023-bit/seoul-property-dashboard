@@ -15,7 +15,7 @@
 <header class="max-w-6xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
   <div>
     <h1 class="text-xl font-bold tracking-tight">서울시 25개구 주택 거래량 대시보드</h1>
-    <p class="text-slate-500 text-xs mt-0.5">마지막 업데이트: 2026-07-06</p>
+    <p id="headerDate" class="text-slate-500 text-xs mt-0.5">데이터 수집일: —</p>
   </div>
   <div class="flex items-center gap-2">
     <!-- 주간/월간 토글 (버튼 2개) -->
@@ -2710,9 +2710,10 @@ const DISTRICTS = Object.keys(baseAptData);
 const RAW = JSON.parse(document.getElementById('real-data').textContent || 'null');
 const IS_REAL = RAW !== null && typeof RAW === 'object' && RAW.byDistrict != null;
 
-// 배지 업데이트
+// 배지 + 헤더 수집일 업데이트 (수집일은 헤더로 일원화, 배지는 간결하게)
 if (IS_REAL) {
-  document.getElementById('dataBadge').textContent = `실데이터 (기준일 ${RAW.generatedAt})`;
+  document.getElementById('dataBadge').textContent = '실데이터';
+  document.getElementById('headerDate').textContent = `데이터 수집일: ${RAW.generatedAt}`;
 }
 
 // ════════════════════════════════════════════════

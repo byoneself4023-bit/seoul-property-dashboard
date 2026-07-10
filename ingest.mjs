@@ -143,7 +143,10 @@ export function buildPeriods(runDate) {
     weekPeriods.push(`${fmtDate(mon)}~${fmtDate(sun)}`);
   }
 
-  return { dealYmdList, monthPeriods, weekPeriods, currentYM, currentWeekMon };
+  // 최근 2개월(직전 완료월 + 당월)은 신고 지연으로 계속 갱신되므로 캐시 무시 대상
+  const recentYmds = dealYmdList.slice(-2);
+
+  return { dealYmdList, monthPeriods, weekPeriods, currentYM, currentWeekMon, recentYmds };
 }
 
 // ════════════════════════════════════════════════
@@ -738,6 +741,10 @@ function runSelfTest() {
   assert('monthPeriods[0] = 2025-07',   periods.monthPeriods[0]  === '2025-07');
   assert('weekPeriods[11] = 2026-06-29~2026-07-05',
     periods.weekPeriods[11] === '2026-06-29~2026-07-05');
+  // 최근 2개월(신고 지연 → 캐시 무시 대상) = 직전월 + 당월
+  assert('recentYmds 길이 = 2', periods.recentYmds.length === 2);
+  assert('recentYmds = [202606, 202607]',
+    periods.recentYmds[0] === '202606' && periods.recentYmds[1] === '202607');
 
   // ── 2. parseItems + parseTotalCount 검증 ────────
   console.log('\n[2] parseItems + parseTotalCount 검증');
@@ -1002,7 +1009,8 @@ async function main() {
   }
 
   const runDate = new Date();
-  const { dealYmdList, monthPeriods, weekPeriods } = buildPeriods(runDate);
+  const { dealYmdList, monthPeriods, weekPeriods, recentYmds } = buildPeriods(runDate);
+  const recentYmdSet = new Set(recentYmds);
   const generatedAt = runDate.toISOString().slice(0, 10);
 
   const propTypes = Object.keys(ENDPOINTS);
@@ -1012,7 +1020,11 @@ async function main() {
   console.log(`[ingest] 유형: ${propTypes.join(', ')} (${propTypes.length}종)`);
   console.log(`[ingest] 예상 요청 수(캐시 미스 시): 25구 × ${dealYmdList.length}개월 × ${propTypes.length}종 = ${totalExpected}건`);
   console.log(`[ingest] 일일 한도: 10,000건 — 여유 있음\n`);
-  console.log('[ingest] ⚠️  오피스텔 API는 별도 활용신청 필요 — 미신청 시 해당 유형만 건너뜁니다\n');
+  console.log('[ingest] ⚠️  오피스텔 API는 별도 활용신청 필요 — 미신청 시 해당 유형만 건너뜁니다');
+  if (useCache) {
+    console.log(`[ingest] 최근 2개월(${recentYmds.join(', ')})은 신고 지연 반영을 위해 캐시 무시하고 재수집`);
+  }
+  console.log('');
 
   const stats = { calls: 0, hits: 0, failures: [], callsByType: {}, hitsByType: {} };
   for (const t of propTypes) { stats.callsByType[t] = 0; stats.hitsByType[t] = 0; }
@@ -1030,8 +1042,10 @@ async function main() {
         for (const [propType, endpoint] of Object.entries(ENDPOINTS)) {
           // @MX:WARN: [AUTO] 일일 한도 초과 시 즉시 중단 — 재시도 없음
           // @MX:REASON: resultCode 22는 재시도해도 의미 없음. 캐시로 이어서 가능.
+          // 최근 2개월은 신고 지연 반영 위해 캐시 무시(재수집). cacheSave는 유지되어 스냅샷 갱신.
+          const comboUseCache = useCache && !recentYmdSet.has(ym);
           const result = await fetchCombo(
-            serviceKey, endpoint, district.code, ym, propType, useCache, stats
+            serviceKey, endpoint, district.code, ym, propType, comboUseCache, stats
           );
 
           if (result === null) continue; // 실패 콤보, 건너뜀 (offi 인증오류 포함)
