@@ -17,6 +17,23 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ════════════════════════════════════════════════
+//  .env 자동 로드 (의존성 없음)
+//  이미 설정된 환경 변수는 덮어쓰지 않음(인라인 우선)
+// ════════════════════════════════════════════════
+(() => {
+  const envPath = join(__dirname, '.env');
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    if (line.trim().startsWith('#')) continue;
+    const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    const key = m[1];
+    const val = m[2].trim().replace(/^["']|["']$/g, '');
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+})();
+
+// ════════════════════════════════════════════════
 //  상수
 // ════════════════════════════════════════════════
 const DELAY_MS  = 200;   // 요청 간 대기 — 일일 한도(10,000건) 방어
@@ -134,16 +151,17 @@ export function buildPeriods(runDate) {
 // ════════════════════════════════════════════════
 
 /**
- * XML 응답에서 resultCode를 검사하고, 00이 아니면 에러를 던진다.
+ * XML 응답에서 resultCode를 검사하고, 성공(0)이 아니면 에러를 던진다.
+ * 성공 코드는 API에 따라 '00' 또는 '000' 으로 오므로 숫자 0으로 판정한다.
  * resultCode 22 (일일 한도 초과)는 별도 플래그를 포함한다.
  *
  * @param {string} xml
- * @throws {Error}  resultCode != 00 일 때
+ * @throws {Error}  resultCode 가 0이 아닐 때
  */
 function checkResultCode(xml) {
   const codeMatch = xml.match(/<resultCode>\s*(\d+)\s*<\/resultCode>/);
   if (!codeMatch) return; // 코드 없으면 통과 (본문 파싱에서 처리)
-  if (codeMatch[1] === '00') return;
+  if (parseInt(codeMatch[1], 10) === 0) return; // '00', '000' 모두 성공
 
   const msgMatch = xml.match(/<resultMsg>\s*([\s\S]*?)\s*<\/resultMsg>/);
   const msg = msgMatch ? msgMatch[1].trim() : '알 수 없는 오류';
@@ -151,7 +169,7 @@ function checkResultCode(xml) {
   err.resultCode = codeMatch[1];
 
   // resultCode 22 = 일일 한도 초과 — 즉시 중단 신호
-  if (codeMatch[1] === '22') {
+  if (parseInt(codeMatch[1], 10) === 22) {
     err.message = '일일 한도 초과 — 내일 재실행(캐시로 이어서 진행됨)';
     err.isQuotaExceeded = true;
   }
@@ -184,9 +202,11 @@ export function parseItems(xml) {
   let itemMatch;
   while ((itemMatch = itemRe.exec(xml)) !== null) {
     const block = itemMatch[1];
-    const yearMatch  = block.match(/<년>\s*(\d+)\s*<\/년>/);
-    const monthMatch = block.match(/<월>\s*(\d+)\s*<\/월>/);
-    const dayMatch   = block.match(/<일>\s*(\d+)\s*<\/일>/);
+    // data.go.kr 상세(Dev) 엔드포인트는 영문 태그(dealYear/dealMonth/dealDay),
+    // 구형 엔드포인트는 한글 태그(년/월/일) — 둘 다 지원
+    const yearMatch  = block.match(/<dealYear>\s*(\d+)\s*<\/dealYear>/)   || block.match(/<년>\s*(\d+)\s*<\/년>/);
+    const monthMatch = block.match(/<dealMonth>\s*(\d+)\s*<\/dealMonth>/) || block.match(/<월>\s*(\d+)\s*<\/월>/);
+    const dayMatch   = block.match(/<dealDay>\s*(\d+)\s*<\/dealDay>/)     || block.match(/<일>\s*(\d+)\s*<\/일>/);
     if (!yearMatch || !monthMatch) continue;
     items.push({
       year:  parseInt(yearMatch[1],  10),
@@ -833,6 +853,13 @@ function runSelfTest() {
   let caughtGeneric = false;
   try { parseItems(errorXml); } catch (e) { caughtGeneric = true; }
   assert('resultCode=30 → 예외 발생', caughtGeneric);
+
+  // 성공 코드는 '00'과 '000'(라이브 API) 둘 다 통과해야 한다 (회귀 방지)
+  let ok00 = true, ok000 = true;
+  try { checkResultCode('<header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>'); } catch { ok00 = false; }
+  try { checkResultCode('<header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>'); } catch { ok000 = false; }
+  assert("resultCode='00' → 성공 통과", ok00);
+  assert("resultCode='000' → 성공 통과", ok000);
 
   // resultCode 22 (일일 한도 초과)
   let quotaErr = null;
