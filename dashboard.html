@@ -7,25 +7,25 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-4">
+<body class="bg-slate-50 text-slate-900 min-h-screen p-4">
 
 <!-- ─────────────────────────────────────────────
   1. 헤더
 ───────────────────────────────────────────── -->
-<header class="max-w-6xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
+<header class="max-w-6xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
   <div>
     <h1 class="text-xl font-bold tracking-tight">서울시 25개구 주택 거래량 대시보드</h1>
-    <p class="text-slate-400 text-xs mt-0.5">마지막 업데이트: 2026-07-06</p>
+    <p class="text-slate-500 text-xs mt-0.5">마지막 업데이트: 2026-07-06</p>
   </div>
   <div class="flex items-center gap-2">
     <!-- 주간/월간 토글 (버튼 2개) -->
-    <div class="flex bg-slate-800 rounded-lg p-0.5 gap-0.5">
+    <div class="flex bg-white border border-slate-200 rounded-lg p-0.5 gap-0.5">
       <button id="btnWeek" onclick="setGranularity('week')"
         class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white">주간</button>
       <button id="btnMonth" onclick="setGranularity('month')"
-        class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white">월간</button>
+        class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-600 hover:text-slate-900">월간</button>
     </div>
-    <span id="dataBadge" title="비아파트=연립다세대+단독다가구+오피스텔(준주택)" class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
+    <span id="dataBadge" title="비아파트=연립다세대+단독다가구+오피스텔(준주택)" class="text-xs bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded font-medium">목데이터</span>
   </div>
 </header>
 
@@ -33,19 +33,19 @@
   2. KPI 카드
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 grid grid-cols-2 gap-3">
-  <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-    <p class="text-slate-400 text-xs mb-1">서울 전체 아파트 거래</p>
+  <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+    <p class="text-slate-500 text-xs mb-1">서울 전체 아파트 거래</p>
     <div class="flex items-baseline gap-2">
-      <span class="text-2xl font-bold text-white" id="kpiApt">—</span>
-      <span class="text-slate-400 text-xs">건</span>
+      <span class="text-2xl font-bold text-slate-900" id="kpiApt">—</span>
+      <span class="text-slate-500 text-xs">건</span>
     </div>
     <p class="text-xs mt-1 font-semibold" id="kpiAptDelta">—</p>
   </div>
-  <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-    <p class="text-slate-400 text-xs mb-1">서울 전체 비아파트 거래</p>
+  <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+    <p class="text-slate-500 text-xs mb-1">서울 전체 비아파트 거래</p>
     <div class="flex items-baseline gap-2">
-      <span class="text-2xl font-bold text-indigo-300" id="kpiNon">—</span>
-      <span class="text-slate-400 text-xs">건</span>
+      <span class="text-2xl font-bold text-indigo-600" id="kpiNon">—</span>
+      <span class="text-slate-500 text-xs">건</span>
     </div>
     <p class="text-xs mt-1 font-semibold" id="kpiNonDelta">—</p>
   </div>
@@ -54,8 +54,8 @@
 <!-- ─────────────────────────────────────────────
   3. 바 차트 (25개구 거래량, 클릭으로 구 선택)
 ───────────────────────────────────────────── -->
-<section class="max-w-6xl mx-auto mb-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
-  <p class="text-xs text-slate-400 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택) · 비아파트=연립다세대·단독다가구·오피스텔</p>
+<section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+  <p class="text-xs text-slate-500 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택) · 비아파트=연립다세대·단독다가구·오피스텔</p>
   <div class="h-56">
     <canvas id="barChart"></canvas>
   </div>
@@ -64,8 +64,8 @@
 <!-- ─────────────────────────────────────────────
   4. 라인 차트 (선택 구 시계열)
 ───────────────────────────────────────────── -->
-<section class="max-w-6xl mx-auto mb-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
-  <p class="text-xs text-slate-400 mb-1">선택 구 추이 — <span id="lineChartTitle" class="text-white font-semibold">강남구</span></p>
+<section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+  <p class="text-xs text-slate-500 mb-1">선택 구 추이 — <span id="lineChartTitle" class="text-slate-900 font-semibold">강남구</span></p>
   <div class="h-48">
     <canvas id="lineChart"></canvas>
   </div>
@@ -76,12 +76,12 @@
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto flex items-center justify-center gap-4">
   <button id="btnPrev" onclick="navigate(-1)"
-    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors">
+    class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
     ← 이전
   </button>
-  <span id="periodLabel" class="text-base font-bold text-indigo-300 min-w-32 text-center">—</span>
+  <span id="periodLabel" class="text-base font-bold text-indigo-600 min-w-32 text-center">—</span>
   <button id="btnNext" onclick="navigate(+1)"
-    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors">
+    class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
     다음 →
   </button>
 </section>
@@ -306,13 +306,13 @@ function renderDelta(elementId, curr, prev) {
   if (pct === null) { el.textContent = '—'; return; }
   if (pct > 0) {
     el.textContent = `▲ ${pct}%`;
-    el.className = 'text-xs mt-1 font-semibold text-red-400';
+    el.className = 'text-xs mt-1 font-semibold text-red-600';
   } else if (pct < 0) {
     el.textContent = `▼ ${Math.abs(pct)}%`;
-    el.className = 'text-xs mt-1 font-semibold text-blue-400';
+    el.className = 'text-xs mt-1 font-semibold text-blue-600';
   } else {
     el.textContent = `— 0%`;
-    el.className = 'text-xs mt-1 font-semibold text-slate-400';
+    el.className = 'text-xs mt-1 font-semibold text-slate-500';
   }
 }
 
@@ -348,17 +348,20 @@ function renderBarChart() {
     data: {
       labels,
       datasets: [
-        { label: '아파트', data: aptVals,    backgroundColor: 'rgba(99,102,241,0.8)',  borderRadius: 2 },
-        { label: '비아파트', data: nonAptVals, backgroundColor: 'rgba(148,163,184,0.6)', borderRadius: 2 }
+        { label: '아파트', data: aptVals,    backgroundColor: 'rgba(99,102,241,0.8)',   borderRadius: 2 },
+        { label: '비아파트', data: nonAptVals, backgroundColor: 'rgba(100,116,139,0.75)', borderRadius: 2 }
       ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      plugins: {
+        legend: { labels: { color: '#475569', font: { size: 11 } } },
+        tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
+      },
       scales: {
-        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+        x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: '#e2e8f0' } },
+        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#e2e8f0' } }
       },
       onClick(evt, elements) {
         if (!elements.length) return;
@@ -405,7 +408,7 @@ function renderLineChart() {
         },
         {
           label: '비아파트', data: nonAptVals,
-          borderColor: 'rgb(148,163,184)', backgroundColor: 'rgba(148,163,184,0.1)',
+          borderColor: 'rgb(100,116,139)', backgroundColor: 'rgba(100,116,139,0.1)',
           tension: 0.3, pointRadius: 3
         }
       ]
@@ -413,10 +416,13 @@ function renderLineChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      plugins: {
+        legend: { labels: { color: '#475569', font: { size: 11 } } },
+        tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
+      },
       scales: {
-        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+        x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: '#e2e8f0' } },
+        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#e2e8f0' } }
       }
     }
   };
@@ -473,10 +479,10 @@ function setGranularity(gran) {
   const mBtn = document.getElementById('btnMonth');
   if (gran === 'week') {
     wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white';
-    mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white';
+    mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-600 hover:text-slate-900';
   } else {
     mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white';
-    wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white';
+    wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-600 hover:text-slate-900';
   }
 
   renderAll();
