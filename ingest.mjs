@@ -351,18 +351,23 @@ function inject(normalized) {
   const html = readFileSync(htmlPath, 'utf8');
   const jsonStr = JSON.stringify(normalized, null, 2);
 
-  const newHtml = html.replace(
-    /(<script\s+type="application\/json"\s+id="real-data">)([\s\S]*?)(<\/script>)/,
-    `$1${jsonStr}$3`
-  );
+  const slotRe = /(<script\s+type="application\/json"\s+id="real-data">)([\s\S]*?)(<\/script>)/;
 
-  if (newHtml === html) {
+  // 슬롯 부재 = 진짜 오류. (내용 유무와 무관하게 슬롯 존재 여부로 판정 — 재실행 멱등)
+  if (!slotRe.test(html)) {
     throw new Error('#real-data 슬롯을 찾지 못했습니다. dashboard.html을 확인하세요.');
   }
 
-  writeFileSync(htmlPath, newHtml, 'utf8');
+  const newHtml = html.replace(slotRe, `$1${jsonStr}$3`);
   writeFileSync(jsonPath, jsonStr, 'utf8');
 
+  // 데이터 무변경(동일 스냅샷) = 정상 no-op. HTML 갱신 생략.
+  if (newHtml === html) {
+    console.log('[ingest] 데이터 변경 없음 — dashboard.html 갱신 생략 (data.json만 저장)');
+    return;
+  }
+
+  writeFileSync(htmlPath, newHtml, 'utf8');
   console.log(`[ingest] dashboard.html 주입 완료 (generatedAt: ${normalized.generatedAt})`);
   console.log(`[ingest] data.json 저장 완료`);
 }
@@ -422,6 +427,7 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
     const cached = cacheLoad(lawdCd, dealYmd, propType);
     if (cached !== null) {
       stats.hits++;
+      stats.hitsByType[propType]++;
       return cached;
     }
   }
@@ -432,6 +438,7 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
     try {
       await sleep(DELAY_MS);
       stats.calls++;
+      stats.callsByType[propType]++;
 
       const allItems = [];
       let pageNo = 1;
@@ -448,6 +455,7 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
         pageNo++;
         await sleep(DELAY_MS);
         stats.calls++;
+        stats.callsByType[propType]++;
       }
 
       // totalCount vs 수집 건수 검증
@@ -540,6 +548,25 @@ const FIXTURE_XML_APT = `
       <item><년>2025</년><월>7</월><일>20</일></item>
     </items>
     <totalCount>6</totalCount>
+    <pageNo>1</pageNo>
+    <numOfRows>1000</numOfRows>
+  </body>
+</response>
+`;
+
+// 라이브 data.go.kr 상세(Dev) 엔드포인트 포맷: resultCode 000 + 영문 태그
+// (실 API가 쓰는 경로 — 파서의 주 경로 검증. 한글 픽스처는 폴백 경로 검증용으로 유지)
+const FIXTURE_XML_APT_EN = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+  <body>
+    <items>
+      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>10</dealDay></item>
+      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>25</dealDay></item>
+      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth></item>
+    </items>
+    <totalCount>3</totalCount>
     <pageNo>1</pageNo>
     <numOfRows>1000</numOfRows>
   </body>
@@ -724,6 +751,17 @@ function runSelfTest() {
   const shItems = parseItems(FIXTURE_XML_SH);
   assert('SH 픽스처 2건 파싱', shItems.length === 2);
   assert('일자 없는 항목 day=null', shItems[1].day === null);
+
+  // 영문 태그(라이브 API 주 경로) 검증
+  const enItems = parseItems(FIXTURE_XML_APT_EN);
+  assert('영문 태그 3건 파싱', enItems.length === 3, `실제: ${enItems.length}`);
+  assert('영문 item year=2026/month=6', enItems[0].year === 2026 && enItems[0].month === 6);
+  assert('영문 item day=10', enItems[0].day === 10);
+  assert('영문 dealDay 없는 항목 day=null', enItems[2].day === null);
+  assert('영문 픽스처 totalCount=3', parseTotalCount(FIXTURE_XML_APT_EN) === 3);
+  let en000ok = true;
+  try { checkResultCode(FIXTURE_XML_APT_EN); } catch { en000ok = false; }
+  assert('영문 픽스처 resultCode=000 통과', en000ok);
 
   // parseTotalCount 검증
   assert('parseTotalCount APT = 6',
@@ -976,8 +1014,8 @@ async function main() {
   console.log(`[ingest] 일일 한도: 10,000건 — 여유 있음\n`);
   console.log('[ingest] ⚠️  오피스텔 API는 별도 활용신청 필요 — 미신청 시 해당 유형만 건너뜁니다\n');
 
-  const stats = { calls: 0, hits: 0, failures: [], callsByType: {} };
-  for (const t of propTypes) stats.callsByType[t] = 0;
+  const stats = { calls: 0, hits: 0, failures: [], callsByType: {}, hitsByType: {} };
+  for (const t of propTypes) { stats.callsByType[t] = 0; stats.hitsByType[t] = 0; }
 
   const rawByDistrict = {};
   const crossCheckData = {};
@@ -999,7 +1037,6 @@ async function main() {
           if (result === null) continue; // 실패 콤보, 건너뜀 (offi 인증오류 포함)
 
           rawByDistrict[district.name][propType].push(...result.items);
-          stats.callsByType[propType] = (stats.callsByType[propType] ?? 0);
 
           // 교차검증 데이터 수집
           const crossKey = `${district.name}_${propType}_${ym}`;
@@ -1030,14 +1067,22 @@ async function main() {
   // 완료 요약
   console.log('\n[ingest] 수집 완료 요약');
   console.log(`  총 API 호출: ${stats.calls}건 (캐시 히트: ${stats.hits}건)`);
-  // 유형별 호출 수: fetchCombo 내부에서 캐시 히트는 stats.calls 에 포함되지 않으므로
-  // 여기서는 실패·성공 여부와 관계없이 시도된 콤보 수를 유형별로 출력한다.
-  const typeEntries = Object.entries(ENDPOINTS);
-  for (const [t] of typeEntries) {
-    const attempted = DISTRICTS.length * dealYmdList.length;
-    const failed    = stats.failures.filter(f => f.combo.endsWith(`/${t}`)).length;
-    const hit       = /* 캐시 히트 수는 propType별 추적 안 함 — 총합으로 표기 */0;
-    console.log(`    ${t.padEnd(5)}: ${attempted}콤보 (실패 ${failed}건)`);
+  // 유형별 실측 통계 (실 호출 · 캐시 히트 · 실패). 페이지네이션 추가 호출도 calls에 포함됨.
+  let sumCalls = 0, sumHits = 0, sumFail = 0;
+  for (const t of propTypes) {
+    const calls  = stats.callsByType[t] ?? 0;
+    const hits   = stats.hitsByType[t] ?? 0;
+    const failed = stats.failures.filter(f => f.combo.endsWith(`/${t}`)).length;
+    sumCalls += calls; sumHits += hits; sumFail += failed;
+    console.log(`    ${t.padEnd(5)}: 호출 ${calls}건 · 캐시 ${hits}건 · 실패 ${failed}건`);
+  }
+  console.log(`    ${'합계'.padEnd(4)}: 호출 ${sumCalls}건 · 캐시 ${sumHits}건 · 실패 ${sumFail}건`);
+  // 유형별 합 = 총합 일치 검증 (불일치 시 집계 지점 누락)
+  if (sumCalls !== stats.calls || sumHits !== stats.hits || sumFail !== stats.failures.length) {
+    console.warn(
+      `  [경고] 유형별 통계 합 ≠ 총합 ` +
+      `(호출 ${sumCalls}/${stats.calls}, 캐시 ${sumHits}/${stats.hits}, 실패 ${sumFail}/${stats.failures.length})`
+    );
   }
   console.log(`  실패 콤보:   ${stats.failures.length}건`);
   if (stats.failures.length > 0) {
