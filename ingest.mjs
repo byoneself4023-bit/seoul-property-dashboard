@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ════════════════════════════════════════════════
 //  상수
 // ════════════════════════════════════════════════
-const DELAY_MS  = 200;   // 요청 간 대기 — 일일 한도(1,000건) 보호
+const DELAY_MS  = 200;   // 요청 간 대기 — 일일 한도(10,000건) 방어
 const PAGE_SIZE = 1000;  // numOfRows
 const MAX_RETRY = 3;     // 지수 백오프 최대 재시도
 const CACHE_DIR = join(__dirname, '.cache', 'ingest');
@@ -57,11 +57,15 @@ const DISTRICTS = [
 
 // ════════════════════════════════════════════════
 //  API 엔드포인트
+//  호출 순서: apt → rh → sh → offi (offi는 마지막)
+//  ⚠️  오피스텔 API는 별도 활용신청 필요 (data.go.kr)
+//  비아파트 정의로 오피스텔을 제외하려면 아래 offi 줄을 주석 처리한다.
 // ════════════════════════════════════════════════
 const ENDPOINTS = {
-  apt: 'http://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
-  rh:  'http://apis.data.go.kr/1613000/RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade',
-  sh:  'http://apis.data.go.kr/1613000/RTMSDataSvcSHTrade/getRTMSDataSvcSHTrade',
+  apt:  'http://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
+  rh:   'http://apis.data.go.kr/1613000/RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade',
+  sh:   'http://apis.data.go.kr/1613000/RTMSDataSvcSHTrade/getRTMSDataSvcSHTrade',
+  offi: 'http://apis.data.go.kr/1613000/RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade', // 오피스텔 — 제외하려면 이 줄 주석 처리
 };
 
 // ════════════════════════════════════════════════
@@ -289,18 +293,21 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
   const byDistrict = {};
 
   for (const [name, raw] of Object.entries(rawByDistrict)) {
-    const aptAgg = aggregateItems(raw.apt, monthPeriods, weekPeriods);
-    const rhAgg  = aggregateItems(raw.rh,  monthPeriods, weekPeriods);
-    const shAgg  = aggregateItems(raw.sh,  monthPeriods, weekPeriods);
+    const aptAgg  = aggregateItems(raw.apt,  monthPeriods, weekPeriods);
+    const rhAgg   = aggregateItems(raw.rh,   monthPeriods, weekPeriods);
+    const shAgg   = aggregateItems(raw.sh,   monthPeriods, weekPeriods);
+    // 오피스텔: raw.offi 가 없으면 0으로 처리 (offi 엔드포인트 주석 처리 시)
+    const offiItems = raw.offi ?? [];
+    const offiAgg = aggregateItems(offiItems, monthPeriods, weekPeriods);
 
     byDistrict[name] = {
       month: monthPeriods.map((_, i) => ({
         apt:    aptAgg.monthly[i],
-        nonApt: rhAgg.monthly[i] + shAgg.monthly[i],
+        nonApt: rhAgg.monthly[i] + shAgg.monthly[i] + offiAgg.monthly[i],
       })),
       week: weekPeriods.map((_, i) => ({
         apt:    aptAgg.weekly[i],
-        nonApt: rhAgg.weekly[i] + shAgg.weekly[i],
+        nonApt: rhAgg.weekly[i] + shAgg.weekly[i] + offiAgg.weekly[i],
       })),
     };
   }
@@ -614,6 +621,35 @@ const FIXTURE_XML_PAGINATION_PAGE2 = `
 </response>
 `;
 
+// 오피스텔 픽스처 (강남구 — 2026-06 2건, 2025-07 1건)
+const FIXTURE_XML_OFFI = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <items>
+      <item><년>2026</년><월>6</월><일>8</일></item>
+      <item><년>2026</년><월>6</월><일>25</일></item>
+      <item><년>2025</년><월>7</월><일>12</일></item>
+    </items>
+    <totalCount>3</totalCount>
+    <pageNo>1</pageNo>
+    <numOfRows>1000</numOfRows>
+  </body>
+</response>
+`;
+
+// 오피스텔 인증 오류 픽스처 (활용신청 미완료 시 — non-00 resultCode)
+const FIXTURE_XML_OFFI_AUTH_ERR = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header>
+    <resultCode>30</resultCode>
+    <resultMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR.</resultMsg>
+  </header>
+</response>
+`;
+
 // 일일 한도 초과 픽스처 (resultCode 22)
 const FIXTURE_XML_QUOTA = `
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -712,19 +748,24 @@ function runSelfTest() {
     weekIdx0618 >= 0 && shAgg.weekly[weekIdx0618] === 1,
     `weekIdx=${weekIdx0618}, 실제: ${weekIdx0618 >= 0 ? shAgg.weekly[weekIdx0618] : 'N/A'}`);
 
-  // ── 4. buildNormalized 검증 ─────────────────────
-  console.log('\n[4] buildNormalized 검증');
+  // ── 4. buildNormalized 검증 (오피스텔 포함) ──────
+  console.log('\n[4] buildNormalized 검증 (offi 포함)');
+
+  const offiItems = parseItems(FIXTURE_XML_OFFI);
+  assert('오피스텔 픽스처 3건 파싱', offiItems.length === 3, `실제: ${offiItems.length}`);
 
   const rawByDistrict = {
     강남구: {
-      apt: aptItems,
-      rh:  parseItems(FIXTURE_XML_RH),
-      sh:  shItems,
+      apt:  aptItems,
+      rh:   parseItems(FIXTURE_XML_RH),
+      sh:   shItems,
+      offi: offiItems,
     },
     종로구: {
-      apt: parseItems(FIXTURE_XML_APT_JONGNO),
-      rh:  parseItems(FIXTURE_XML_EMPTY),
-      sh:  parseItems(FIXTURE_XML_EMPTY),
+      apt:  parseItems(FIXTURE_XML_APT_JONGNO),
+      rh:   parseItems(FIXTURE_XML_EMPTY),
+      sh:   parseItems(FIXTURE_XML_EMPTY),
+      offi: parseItems(FIXTURE_XML_EMPTY),
     },
   };
 
@@ -747,14 +788,43 @@ function runSelfTest() {
   const gangnamJun = normalized.byDistrict['강남구'].month[jun26Idx];
   assert('강남구 2026-06 apt = 3',
     gangnamJun.apt === 3, `실제: ${gangnamJun.apt}`);
-  assert('강남구 2026-06 nonApt = 4 (rh=2 + sh=2)',
-    gangnamJun.nonApt === 4, `실제: ${gangnamJun.nonApt}`);
+  // nonApt = rh(2) + sh(2) + offi(2) = 6
+  assert('강남구 2026-06 nonApt = 6 (rh=2 + sh=2 + offi=2)',
+    gangnamJun.nonApt === 6, `실제: ${gangnamJun.nonApt}`);
+
+  // 2025-07: offi 1건 포함 → rh(0) + sh(0) + offi(1) = 1
+  const jul25Idx   = normalized.periods.month.indexOf('2025-07');
+  const gangnamJul = normalized.byDistrict['강남구'].month[jul25Idx];
+  assert('강남구 2025-07 apt = 2',
+    gangnamJul.apt === 2, `실제: ${gangnamJul.apt}`);
+  assert('강남구 2025-07 nonApt = 1 (offi만)',
+    gangnamJul.nonApt === 1, `실제: ${gangnamJul.nonApt}`);
 
   const jongnoJun = normalized.byDistrict['종로구'].month[jun26Idx];
   assert('종로구 2026-06 apt = 1',
     jongnoJun.apt === 1, `실제: ${jongnoJun.apt}`);
-  assert('종로구 2026-06 nonApt = 0',
+  assert('종로구 2026-06 nonApt = 0 (offi 없음)',
     jongnoJun.nonApt === 0, `실제: ${jongnoJun.nonApt}`);
+
+  // ── 4b. offi 없을 때 fallback (raw.offi 미정의) ──
+  console.log('\n[4b] offi 슬롯 없을 때 buildNormalized fallback 검증');
+  const rawNoOffi = {
+    강남구: { apt: aptItems, rh: parseItems(FIXTURE_XML_RH), sh: shItems },
+  };
+  const normalizedNoOffi = buildNormalized(
+    rawNoOffi, periods.monthPeriods, periods.weekPeriods, '2026-07-10'
+  );
+  const gangnamJunNoOffi = normalizedNoOffi.byDistrict['강남구'].month[jun26Idx];
+  assert('offi 없을 때 nonApt = 4 (rh=2 + sh=2 + offi=0)',
+    gangnamJunNoOffi.nonApt === 4, `실제: ${gangnamJunNoOffi.nonApt}`);
+
+  // ── 4c. offi 인증 오류는 non-fatal ───────────────
+  console.log('\n[4c] 오피스텔 인증 오류 non-fatal 검증');
+  let offiAuthErr = null;
+  try { parseItems(FIXTURE_XML_OFFI_AUTH_ERR); } catch (e) { offiAuthErr = e; }
+  assert('offi 인증오류 → 예외 발생', offiAuthErr !== null);
+  assert('offi 인증오류 → isQuotaExceeded=false (non-fatal)',
+    offiAuthErr?.isQuotaExceeded !== true);
 
   // ── 5. 에러 XML / resultCode 검증 ───────────────
   console.log('\n[5] resultCode 검증');
@@ -828,7 +898,8 @@ function runSelfTest() {
 
   // ── 결과 출력 ───────────────────────────────────
   console.log('\n=== 집계 샘플 ===');
-  console.log('강남구 2026-06:', gangnamJun);
+  console.log('강남구 2026-06 (apt/nonApt):', gangnamJun, '← rh=2+sh=2+offi=2=6');
+  console.log('강남구 2025-07 (apt/nonApt):', gangnamJul, '← offi=1');
   console.log('강남구 주간[마지막완료주]:', normalized.byDistrict['강남구'].week[11]);
   console.log('종로구 2026-06:', jongnoJun);
   console.log('페이지네이션 수집 3건:', allPagedItems.map(i => `${i.year}-${i.month}-${i.day}`));
@@ -869,19 +940,26 @@ async function main() {
   const { dealYmdList, monthPeriods, weekPeriods } = buildPeriods(runDate);
   const generatedAt = runDate.toISOString().slice(0, 10);
 
-  const totalExpected = DISTRICTS.length * dealYmdList.length * 3;
+  const propTypes = Object.keys(ENDPOINTS);
+  const totalExpected = DISTRICTS.length * dealYmdList.length * propTypes.length;
   console.log(`\n[ingest] 실행 날짜: ${generatedAt}`);
   console.log(`[ingest] 수집 기간: ${dealYmdList[0]} ~ ${dealYmdList[dealYmdList.length - 1]}`);
-  console.log(`[ingest] 예상 요청 수(캐시 미스 시): ${totalExpected}건\n`);
+  console.log(`[ingest] 유형: ${propTypes.join(', ')} (${propTypes.length}종)`);
+  console.log(`[ingest] 예상 요청 수(캐시 미스 시): 25구 × ${dealYmdList.length}개월 × ${propTypes.length}종 = ${totalExpected}건`);
+  console.log(`[ingest] 일일 한도: 10,000건 — 여유 있음\n`);
+  console.log('[ingest] ⚠️  오피스텔 API는 별도 활용신청 필요 — 미신청 시 해당 유형만 건너뜁니다\n');
 
-  const stats = { calls: 0, hits: 0, failures: [] };
+  const stats = { calls: 0, hits: 0, failures: [], callsByType: {} };
+  for (const t of propTypes) stats.callsByType[t] = 0;
+
   const rawByDistrict = {};
   const crossCheckData = {};
 
   try {
     for (const district of DISTRICTS) {
       console.log(`[ingest] ${district.name} (${district.code}) 수집 중...`);
-      rawByDistrict[district.name] = { apt: [], rh: [], sh: [] };
+      // 모든 propType 슬롯을 빈 배열로 초기화 (offi 포함)
+      rawByDistrict[district.name] = Object.fromEntries(propTypes.map(t => [t, []]));
 
       for (const ym of dealYmdList) {
         for (const [propType, endpoint] of Object.entries(ENDPOINTS)) {
@@ -891,9 +969,10 @@ async function main() {
             serviceKey, endpoint, district.code, ym, propType, useCache, stats
           );
 
-          if (result === null) continue; // 실패 콤보, 건너뜀
+          if (result === null) continue; // 실패 콤보, 건너뜀 (offi 인증오류 포함)
 
           rawByDistrict[district.name][propType].push(...result.items);
+          stats.callsByType[propType] = (stats.callsByType[propType] ?? 0);
 
           // 교차검증 데이터 수집
           const crossKey = `${district.name}_${propType}_${ym}`;
@@ -905,9 +984,8 @@ async function main() {
       }
 
       const d = rawByDistrict[district.name];
-      console.log(
-        `  → apt: ${d.apt.length}건, rh: ${d.rh.length}건, sh: ${d.sh.length}건`
-      );
+      const typeSummary = propTypes.map(t => `${t}: ${d[t].length}건`).join(', ');
+      console.log(`  → ${typeSummary}`);
     }
   } catch (err) {
     if (err.isQuotaExceeded) {
@@ -924,8 +1002,16 @@ async function main() {
 
   // 완료 요약
   console.log('\n[ingest] 수집 완료 요약');
-  console.log(`  총 API 호출: ${stats.calls}건`);
-  console.log(`  캐시 히트:   ${stats.hits}건`);
+  console.log(`  총 API 호출: ${stats.calls}건 (캐시 히트: ${stats.hits}건)`);
+  // 유형별 호출 수: fetchCombo 내부에서 캐시 히트는 stats.calls 에 포함되지 않으므로
+  // 여기서는 실패·성공 여부와 관계없이 시도된 콤보 수를 유형별로 출력한다.
+  const typeEntries = Object.entries(ENDPOINTS);
+  for (const [t] of typeEntries) {
+    const attempted = DISTRICTS.length * dealYmdList.length;
+    const failed    = stats.failures.filter(f => f.combo.endsWith(`/${t}`)).length;
+    const hit       = /* 캐시 히트 수는 propType별 추적 안 함 — 총합으로 표기 */0;
+    console.log(`    ${t.padEnd(5)}: ${attempted}콤보 (실패 ${failed}건)`);
+  }
   console.log(`  실패 콤보:   ${stats.failures.length}건`);
   if (stats.failures.length > 0) {
     for (const f of stats.failures) {

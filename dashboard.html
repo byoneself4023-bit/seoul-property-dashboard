@@ -25,7 +25,7 @@
       <button id="btnMonth" onclick="setGranularity('month')"
         class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white">월간</button>
     </div>
-    <span id="dataBadge" class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
+    <span id="dataBadge" title="비아파트=연립다세대+단독다가구+오피스텔(준주택)" class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
   </div>
 </header>
 
@@ -55,7 +55,7 @@
   3. 바 차트 (25개구 거래량, 클릭으로 구 선택)
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
-  <p class="text-xs text-slate-400 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택)</p>
+  <p class="text-xs text-slate-400 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택) · 비아파트=연립다세대·단독다가구·오피스텔</p>
   <div class="h-56">
     <canvas id="barChart"></canvas>
   </div>
