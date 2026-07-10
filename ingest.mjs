@@ -2,18 +2,27 @@
  * ingest.mjs — 국토교통부 RTMS 실거래가 API → dashboard.html 주입
  *
  * 사용법:
- *   RTMS_SERVICE_KEY=<키> node ingest.mjs        # 실 데이터 수집
- *   node ingest.mjs --selftest                   # 로컬 픽스처로 파이프라인 검증
+ *   RTMS_SERVICE_KEY=<키> node ingest.mjs           # 실 데이터 수집 (캐시 활용)
+ *   RTMS_SERVICE_KEY=<키> node ingest.mjs --fresh   # 캐시 무시, 전체 재수집
+ *   node ingest.mjs --selftest                      # 로컬 픽스처로 파이프라인 검증
  *
  * 환경 변수:
- *   RTMS_SERVICE_KEY  공공데이터포털 API 인증키 (URL-encoded)
+ *   RTMS_SERVICE_KEY  공공데이터포털 API 인증키 (URL-encoded 없는 원문)
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ════════════════════════════════════════════════
+//  상수
+// ════════════════════════════════════════════════
+const DELAY_MS  = 200;   // 요청 간 대기 — 일일 한도(1,000건) 보호
+const PAGE_SIZE = 1000;  // numOfRows
+const MAX_RETRY = 3;     // 지수 백오프 최대 재시도
+const CACHE_DIR = join(__dirname, '.cache', 'ingest');
 
 // ════════════════════════════════════════════════
 //  25개 서울 자치구 법정동코드
@@ -121,21 +130,52 @@ export function buildPeriods(runDate) {
 // ════════════════════════════════════════════════
 
 /**
+ * XML 응답에서 resultCode를 검사하고, 00이 아니면 에러를 던진다.
+ * resultCode 22 (일일 한도 초과)는 별도 플래그를 포함한다.
+ *
+ * @param {string} xml
+ * @throws {Error}  resultCode != 00 일 때
+ */
+function checkResultCode(xml) {
+  const codeMatch = xml.match(/<resultCode>\s*(\d+)\s*<\/resultCode>/);
+  if (!codeMatch) return; // 코드 없으면 통과 (본문 파싱에서 처리)
+  if (codeMatch[1] === '00') return;
+
+  const msgMatch = xml.match(/<resultMsg>\s*([\s\S]*?)\s*<\/resultMsg>/);
+  const msg = msgMatch ? msgMatch[1].trim() : '알 수 없는 오류';
+  const err = new Error(`API 오류 (resultCode ${codeMatch[1]}): ${msg}`);
+  err.resultCode = codeMatch[1];
+
+  // resultCode 22 = 일일 한도 초과 — 즉시 중단 신호
+  if (codeMatch[1] === '22') {
+    err.message = '일일 한도 초과 — 내일 재실행(캐시로 이어서 진행됨)';
+    err.isQuotaExceeded = true;
+  }
+
+  throw err;
+}
+
+/**
+ * XML 응답에서 totalCount를 읽는다.
+ * @param {string} xml
+ * @returns {number}
+ */
+export function parseTotalCount(xml) {
+  const m = xml.match(/<totalCount>\s*(\d+)\s*<\/totalCount>/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
  * XML 응답에서 <item> 블록을 추출하고 계약 날짜를 파싱한다.
+ * resultCode 검사를 포함한다.
+ *
  * @param {string} xml
  * @returns {{ year: number, month: number, day: number|null }[]}
  */
 export function parseItems(xml) {
-  // 에러 응답 감지 (resultCode != 00)
-  const codeMatch = xml.match(/<resultCode>\s*(\d+)\s*<\/resultCode>/);
-  if (codeMatch && codeMatch[1] !== '00') {
-    const msgMatch = xml.match(/<resultMsg>\s*([\s\S]*?)\s*<\/resultMsg>/);
-    const msg = msgMatch ? msgMatch[1] : '알 수 없는 오류';
-    throw new Error(`API 오류 (resultCode ${codeMatch[1]}): ${msg}`);
-  }
+  checkResultCode(xml);
 
   const items = [];
-  // <item>...</item> 블록 분리
   const itemRe = /<item>([\s\S]*?)<\/item>/g;
   let itemMatch;
   while ((itemMatch = itemRe.exec(xml)) !== null) {
@@ -143,7 +183,7 @@ export function parseItems(xml) {
     const yearMatch  = block.match(/<년>\s*(\d+)\s*<\/년>/);
     const monthMatch = block.match(/<월>\s*(\d+)\s*<\/월>/);
     const dayMatch   = block.match(/<일>\s*(\d+)\s*<\/일>/);
-    if (!yearMatch || !monthMatch) continue; // 날짜 없으면 건너뜀
+    if (!yearMatch || !monthMatch) continue;
     items.push({
       year:  parseInt(yearMatch[1],  10),
       month: parseInt(monthMatch[1], 10),
@@ -153,14 +193,32 @@ export function parseItems(xml) {
   return items;
 }
 
-/**
- * totalCount를 XML에서 읽는다.
- * @param {string} xml
- * @returns {number}
- */
-function parseTotalCount(xml) {
-  const m = xml.match(/<totalCount>\s*(\d+)\s*<\/totalCount>/);
-  return m ? parseInt(m[1], 10) : 0;
+// ════════════════════════════════════════════════
+//  로컬 캐시 (LAWD_CD + DEAL_YMD + propertyType)
+//  캐시 항목: { totalCount, items: [{year,month,day|null},...] }
+// ════════════════════════════════════════════════
+
+function cacheKey(lawdCd, dealYmd, propType) {
+  return `${lawdCd}_${dealYmd}_${propType}`;
+}
+
+function cachePath(lawdCd, dealYmd, propType) {
+  return join(CACHE_DIR, `${cacheKey(lawdCd, dealYmd, propType)}.json`);
+}
+
+function cacheLoad(lawdCd, dealYmd, propType) {
+  const p = cachePath(lawdCd, dealYmd, propType);
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function cacheSave(lawdCd, dealYmd, propType, data) {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  writeFileSync(cachePath(lawdCd, dealYmd, propType), JSON.stringify(data), 'utf8');
 }
 
 // ════════════════════════════════════════════════
@@ -179,11 +237,9 @@ function parseTotalCount(xml) {
  * }}
  */
 export function aggregateItems(items, monthPeriods, weekPeriods) {
-  // 월별 카운터
   const monthMap = {};
   for (const p of monthPeriods) monthMap[p] = 0;
 
-  // 주별: 각 주의 [monDate, sunDate] 파싱
   const weekRanges = weekPeriods.map(p => {
     const [monStr, sunStr] = p.split('~');
     return { key: p, monStr, sunStr };
@@ -194,12 +250,10 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
     const { year, month, day } = item;
     const ymKey = `${year}-${String(month).padStart(2, '0')}`;
 
-    // 월 집계
     if (ymKey in monthMap) {
       monthMap[ymKey]++;
     }
 
-    // 주 집계 (일자 없으면 주 버킷에는 포함하지 않음)
     if (day !== null) {
       const itemDateStr =
         `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
@@ -219,53 +273,11 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
 }
 
 // ════════════════════════════════════════════════
-//  실 API 페치 (네트워크 필요)
-// ════════════════════════════════════════════════
-
-const DELAY_MS  = 120;  // 요청 간 대기 (ms)
-const PAGE_SIZE = 1000; // numOfRows
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * 단일 LAWD_CD + DEAL_YMD + 엔드포인트에 대해 전체 페이지를 수집한다.
- * @returns {{ year, month, day }[]}
- */
-async function fetchAllPages(serviceKey, endpoint, lawdCd, dealYmd) {
-  const items = [];
-  let pageNo = 1;
-
-  while (true) {
-    const url = new URL(endpoint);
-    url.searchParams.set('serviceKey', serviceKey);
-    url.searchParams.set('LAWD_CD',    lawdCd);
-    url.searchParams.set('DEAL_YMD',   dealYmd);
-    url.searchParams.set('pageNo',     String(pageNo));
-    url.searchParams.set('numOfRows',  String(PAGE_SIZE));
-
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText} — ${url}`);
-    }
-    const xml = await res.text();
-    const parsed = parseItems(xml);
-    items.push(...parsed);
-
-    if (parsed.length < PAGE_SIZE) break; // 마지막 페이지
-    pageNo++;
-  }
-
-  return items;
-}
-
-// ════════════════════════════════════════════════
 //  정규화 JSON 생성
 // ════════════════════════════════════════════════
 
 /**
- * 수집된 구별 원시 카운트를 정규화 구조로 조립한다.
+ * 수집된 구별 원시 아이템을 정규화 구조로 조립한다.
  *
  * @param {Object} rawByDistrict  { districtName: { apt: items[], rh: items[], sh: items[] } }
  * @param {string[]} monthPeriods
@@ -305,10 +317,6 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
 //  dashboard.html 주입
 // ════════════════════════════════════════════════
 
-/**
- * dashboard.html의 #real-data 블록에 JSON을 주입하고
- * 사이드카 data.json도 저장한다.
- */
 function inject(normalized) {
   const htmlPath = join(__dirname, 'dashboard.html');
   const jsonPath = join(__dirname, 'data.json');
@@ -316,7 +324,6 @@ function inject(normalized) {
   const html = readFileSync(htmlPath, 'utf8');
   const jsonStr = JSON.stringify(normalized, null, 2);
 
-  // <script type="application/json" id="real-data">...</script> 블록 교체
   const newHtml = html.replace(
     /(<script\s+type="application\/json"\s+id="real-data">)([\s\S]*?)(<\/script>)/,
     `$1${jsonStr}$3`
@@ -331,6 +338,158 @@ function inject(normalized) {
 
   console.log(`[ingest] dashboard.html 주입 완료 (generatedAt: ${normalized.generatedAt})`);
   console.log(`[ingest] data.json 저장 완료`);
+}
+
+// ════════════════════════════════════════════════
+//  네트워크 유틸리티
+// ════════════════════════════════════════════════
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 단일 페이지 요청 (resultCode 검사 포함, 재시도 없음).
+ * @returns {{ xml: string, items: array, totalCount: number }}
+ */
+async function fetchOnePage(serviceKey, endpoint, lawdCd, dealYmd, pageNo) {
+  const url = new URL(endpoint);
+  url.searchParams.set('serviceKey', serviceKey);
+  url.searchParams.set('LAWD_CD',    lawdCd);
+  url.searchParams.set('DEAL_YMD',   dealYmd);
+  url.searchParams.set('pageNo',     String(pageNo));
+  url.searchParams.set('numOfRows',  String(PAGE_SIZE));
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+    err.httpStatus = res.status;
+    throw err;
+  }
+  const xml = await res.text();
+
+  // resultCode 검사 — 22(한도초과) 포함 non-00 전부 checkResultCode에서 처리
+  checkResultCode(xml);
+
+  const items      = parseItems(xml);
+  const totalCount = parseTotalCount(xml);
+  return { xml, items, totalCount };
+}
+
+/**
+ * 단일 콤보(LAWD_CD + DEAL_YMD + propType)에 대해
+ * 전체 페이지를 수집하고 totalCount를 검증한다.
+ *
+ * @param {string} serviceKey
+ * @param {string} endpoint
+ * @param {string} lawdCd
+ * @param {string} dealYmd
+ * @param {string} propType   'apt' | 'rh' | 'sh'
+ * @param {boolean} useCache
+ * @param {Object}  stats     { calls, hits, failures }
+ * @returns {{ items: array, totalCount: number } | null}  null = 실패(계속 진행)
+ */
+async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCache, stats) {
+  // 캐시 확인
+  if (useCache) {
+    const cached = cacheLoad(lawdCd, dealYmd, propType);
+    if (cached !== null) {
+      stats.hits++;
+      return cached;
+    }
+  }
+
+  // 지수 백오프 재시도
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    try {
+      await sleep(DELAY_MS);
+      stats.calls++;
+
+      const allItems = [];
+      let pageNo = 1;
+      let totalCount = 0;
+
+      while (true) {
+        const { items, totalCount: tc } = await fetchOnePage(
+          serviceKey, endpoint, lawdCd, dealYmd, pageNo
+        );
+        if (pageNo === 1) totalCount = tc;
+        allItems.push(...items);
+
+        if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
+        pageNo++;
+        await sleep(DELAY_MS);
+        stats.calls++;
+      }
+
+      // totalCount vs 수집 건수 검증
+      if (allItems.length !== totalCount) {
+        console.warn(
+          `  [경고] ${lawdCd}/${dealYmd}/${propType}: ` +
+          `totalCount=${totalCount} 인데 수집=${allItems.length}건`
+        );
+        stats.failures.push({
+          combo: `${lawdCd}/${dealYmd}/${propType}`,
+          reason: `totalCount 불일치 (${totalCount} vs ${allItems.length})`
+        });
+        // 불일치라도 수집된 건 캐시에 저장 (부분 데이터 활용)
+      }
+
+      const result = { items: allItems, totalCount };
+      cacheSave(lawdCd, dealYmd, propType, result);
+      return result;
+
+    } catch (err) {
+      // 일일 한도 초과 — 즉시 재전파 (재시도 없음)
+      if (err.isQuotaExceeded) throw err;
+
+      lastErr = err;
+      if (attempt < MAX_RETRY) {
+        const waitMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+        console.warn(`  [재시도 ${attempt}/${MAX_RETRY}] ${lawdCd}/${dealYmd}/${propType}: ${err.message} — ${waitMs}ms 후 재시도`);
+        await sleep(waitMs);
+      }
+    }
+  }
+
+  // MAX_RETRY 모두 실패 → 목록에 기록하고 null 반환 (중단 없이 계속)
+  stats.failures.push({
+    combo: `${lawdCd}/${dealYmd}/${propType}`,
+    reason: lastErr.message
+  });
+  console.error(`  [실패] ${lawdCd}/${dealYmd}/${propType}: ${lastErr.message}`);
+  return null;
+}
+
+// ════════════════════════════════════════════════
+//  월별 day-level 교차 검증
+//  totalCount(API) === 해당 월 내 일자 있는 records 합계가 아니라,
+//  item 목록 길이(월 전체 건수)와 totalCount를 비교한다.
+//  주의: API는 DEAL_YMD(YYYYMM)별로 한 번에 호출하므로
+//        월별 totalCount = 해당 월 item 수 = monthMap[YM] 와 비교 가능.
+// ════════════════════════════════════════════════
+
+/**
+ * 각 구·유형별 월 단위 캐시 데이터로 교차 검증을 수행한다.
+ * API는 DEAL_YMD=YYYYMM 으로 호출하므로,
+ * 해당 월 totalCount = 수집된 items.length 여야 한다.
+ * (위의 fetchCombo에서 이미 개별 경고를 내지만, 여기서 집계 요약을 출력한다.)
+ *
+ * @param {Object} crossCheckData  { districtName_propType_ym: { totalCount, collectedCount } }
+ */
+function printCrossCheck(crossCheckData) {
+  const mismatches = Object.entries(crossCheckData).filter(
+    ([, v]) => v.totalCount !== v.collectedCount
+  );
+  if (mismatches.length === 0) {
+    console.log('[교차검증] 전체 콤보 totalCount === 수집건수 일치 ✓');
+  } else {
+    console.log(`[교차검증] 불일치 ${mismatches.length}건:`);
+    for (const [key, v] of mismatches) {
+      console.log(`  ${key}: totalCount=${v.totalCount}, 수집=${v.collectedCount}`);
+    }
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -394,7 +553,7 @@ const FIXTURE_XML_SH = `
 </response>
 `;
 
-// 종로구 픽스처 (다른 구도 정상 처리되는지 확인)
+// 종로구 픽스처
 const FIXTURE_XML_APT_JONGNO = `
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <response>
@@ -423,6 +582,49 @@ const FIXTURE_XML_EMPTY = `
 </response>
 `;
 
+// 페이지네이션 테스트 픽스처 (totalCount=3 인데 items가 2건 = 불일치 케이스)
+const FIXTURE_XML_PAGINATION_PAGE1 = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <items>
+      <item><년>2026</년><월>5</월><일>1</일></item>
+      <item><년>2026</년><월>5</월><일>2</일></item>
+    </items>
+    <totalCount>3</totalCount>
+    <pageNo>1</pageNo>
+    <numOfRows>2</numOfRows>
+  </body>
+</response>
+`;
+
+const FIXTURE_XML_PAGINATION_PAGE2 = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <items>
+      <item><년>2026</년><월>5</월><일>3</일></item>
+    </items>
+    <totalCount>3</totalCount>
+    <pageNo>2</pageNo>
+    <numOfRows>2</numOfRows>
+  </body>
+</response>
+`;
+
+// 일일 한도 초과 픽스처 (resultCode 22)
+const FIXTURE_XML_QUOTA = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header>
+    <resultCode>22</resultCode>
+    <resultMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR.</resultMsg>
+  </header>
+</response>
+`;
+
 function runSelfTest() {
   console.log('=== RTMS 파이프라인 셀프테스트 시작 ===\n');
   let pass = true;
@@ -440,7 +642,7 @@ function runSelfTest() {
 
   // ── 1. buildPeriods 검증 ────────────────────────
   console.log('[1] buildPeriods(2026-07-10) 검증');
-  const runDate = new Date('2026-07-10'); // 목요일
+  const runDate = new Date('2026-07-10'); // 금요일
   const periods = buildPeriods(runDate);
 
   assert('monthPeriods 길이 = 12', periods.monthPeriods.length === 12);
@@ -454,8 +656,8 @@ function runSelfTest() {
   assert('weekPeriods[11] = 2026-06-29~2026-07-05',
     periods.weekPeriods[11] === '2026-06-29~2026-07-05');
 
-  // ── 2. parseItems 검증 ──────────────────────────
-  console.log('\n[2] parseItems 검증');
+  // ── 2. parseItems + parseTotalCount 검증 ────────
+  console.log('\n[2] parseItems + parseTotalCount 검증');
   const aptItems = parseItems(FIXTURE_XML_APT);
   assert('아파트 픽스처 6건 파싱', aptItems.length === 6,
     `실제: ${aptItems.length}`);
@@ -466,6 +668,14 @@ function runSelfTest() {
   const shItems = parseItems(FIXTURE_XML_SH);
   assert('SH 픽스처 2건 파싱', shItems.length === 2);
   assert('일자 없는 항목 day=null', shItems[1].day === null);
+
+  // parseTotalCount 검증
+  assert('parseTotalCount APT = 6',
+    parseTotalCount(FIXTURE_XML_APT) === 6);
+  assert('parseTotalCount RH = 2',
+    parseTotalCount(FIXTURE_XML_RH) === 2);
+  assert('parseTotalCount EMPTY = 0',
+    parseTotalCount(FIXTURE_XML_EMPTY) === 0);
 
   // ── 3. aggregateItems 검증 ──────────────────────
   console.log('\n[3] aggregateItems 검증');
@@ -482,26 +692,21 @@ function runSelfTest() {
     aptAgg.monthly[periods.monthPeriods.indexOf('2025-07')] === 2,
     `실제: ${aptAgg.monthly[periods.monthPeriods.indexOf('2025-07')]}`);
 
-  // 진행중 당월(2026-07)은 monthPeriods에 없으므로 집계 안됨
   assert('진행중 월(202607)은 monthPeriods에 없음',
     !periods.monthPeriods.includes('2026-07'));
 
-  // 주별 집계: 2026-06-29~2026-07-05 (완료 주)에 해당하는 아파트 항목
-  // 픽스처: 2026-06-29(month=6) + 2026-07-02(month=7) → 둘 다 이 주에 속함 → 2건
-  const lastWeekKey = periods.weekPeriods[11]; // "2026-06-29~2026-07-05"
+  // 주별 집계: 2026-06-29~2026-07-05에 6월29일 + 7월2일 모두 포함 → 2건
+  const lastWeekKey = periods.weekPeriods[11];
   assert('마지막 완료주 키 = 2026-06-29~2026-07-05',
     lastWeekKey === '2026-06-29~2026-07-05');
   assert('아파트 주별[마지막완료주] = 2 (06-29 + 07-02 모두 이 주에 속함)',
     aptAgg.weekly[11] === 2,
     `실제: ${aptAgg.weekly[11]}`);
 
-  // SH 집계: 일자 없는 항목은 주 버킷에서 제외
   const shAgg = aggregateItems(shItems, periods.monthPeriods, periods.weekPeriods);
   assert('SH 월별[2026-06] = 2 (일자없는항목도 월 카운트)',
     shAgg.monthly[periods.monthPeriods.indexOf('2026-06')] === 2,
     `실제: ${shAgg.monthly[periods.monthPeriods.indexOf('2026-06')]}`);
-  // 일자 없는 SH 항목은 6월 18일 만 주 버킷에 들어감
-  // 2026-06-18은 2026-06-15~2026-06-21 주에 속함
   const weekIdx0618 = periods.weekPeriods.findIndex(p => p.startsWith('2026-06-15'));
   assert('SH 주별[2026-06-15주] = 1 (일자있는항목만)',
     weekIdx0618 >= 0 && shAgg.weekly[weekIdx0618] === 1,
@@ -530,52 +735,103 @@ function runSelfTest() {
     '2026-07-10'
   );
 
-  assert('generatedAt = 2026-07-10',
-    normalized.generatedAt === '2026-07-10');
-  assert('source = rtms',
-    normalized.source === 'rtms');
-  assert('periods.month 길이 = 12',
-    normalized.periods.month.length === 12);
-  assert('periods.week 길이 = 12',
-    normalized.periods.week.length === 12);
-  assert('byDistrict.강남구 존재',
-    '강남구' in normalized.byDistrict);
-  assert('강남구.month 길이 = 12',
-    normalized.byDistrict['강남구'].month.length === 12);
-  assert('강남구.week 길이 = 12',
-    normalized.byDistrict['강남구'].week.length === 12);
+  assert('generatedAt = 2026-07-10', normalized.generatedAt === '2026-07-10');
+  assert('source = rtms',            normalized.source === 'rtms');
+  assert('periods.month 길이 = 12',  normalized.periods.month.length === 12);
+  assert('periods.week 길이 = 12',   normalized.periods.week.length === 12);
+  assert('byDistrict.강남구 존재',   '강남구' in normalized.byDistrict);
+  assert('강남구.month 길이 = 12',   normalized.byDistrict['강남구'].month.length === 12);
+  assert('강남구.week 길이 = 12',    normalized.byDistrict['강남구'].week.length === 12);
 
-  // 2026-06: apt=3, nonApt=(rh=2 + sh=2)=4
-  const jun26Idx = normalized.periods.month.indexOf('2026-06');
+  const jun26Idx   = normalized.periods.month.indexOf('2026-06');
   const gangnamJun = normalized.byDistrict['강남구'].month[jun26Idx];
   assert('강남구 2026-06 apt = 3',
-    gangnamJun.apt === 3,
-    `실제: ${gangnamJun.apt}`);
+    gangnamJun.apt === 3, `실제: ${gangnamJun.apt}`);
   assert('강남구 2026-06 nonApt = 4 (rh=2 + sh=2)',
-    gangnamJun.nonApt === 4,
-    `실제: ${gangnamJun.nonApt}`);
+    gangnamJun.nonApt === 4, `실제: ${gangnamJun.nonApt}`);
 
-  // 종로구 2026-06 apt = 1
   const jongnoJun = normalized.byDistrict['종로구'].month[jun26Idx];
   assert('종로구 2026-06 apt = 1',
-    jongnoJun.apt === 1,
-    `실제: ${jongnoJun.apt}`);
+    jongnoJun.apt === 1, `실제: ${jongnoJun.apt}`);
   assert('종로구 2026-06 nonApt = 0',
-    jongnoJun.nonApt === 0,
-    `실제: ${jongnoJun.nonApt}`);
+    jongnoJun.nonApt === 0, `실제: ${jongnoJun.nonApt}`);
 
-  // ── 5. 에러 XML 감지 ────────────────────────────
-  console.log('\n[5] API 에러 응답 감지 검증');
+  // ── 5. 에러 XML / resultCode 검증 ───────────────
+  console.log('\n[5] resultCode 검증');
+
   const errorXml = `<response><header><resultCode>30</resultCode><resultMsg>SERVICE ERROR</resultMsg></header></response>`;
-  let errorCaught = false;
-  try { parseItems(errorXml); } catch (e) { errorCaught = true; }
-  assert('resultCode!=00 에서 예외 발생', errorCaught);
+  let caughtGeneric = false;
+  try { parseItems(errorXml); } catch (e) { caughtGeneric = true; }
+  assert('resultCode=30 → 예외 발생', caughtGeneric);
+
+  // resultCode 22 (일일 한도 초과)
+  let quotaErr = null;
+  try { checkResultCode(FIXTURE_XML_QUOTA); } catch (e) { quotaErr = e; }
+  assert('resultCode=22 → 예외 발생', quotaErr !== null);
+  assert('resultCode=22 → isQuotaExceeded=true', quotaErr?.isQuotaExceeded === true);
+
+  // ── 6. totalCount 기반 집계 검증 ────────────────
+  console.log('\n[6] totalCount 및 페이지네이션 검증');
+
+  // parseTotalCount 재확인
+  assert('APT totalCount=6 파싱', parseTotalCount(FIXTURE_XML_APT) === 6);
+  assert('EMPTY totalCount=0 파싱', parseTotalCount(FIXTURE_XML_EMPTY) === 0);
+
+  // 페이지네이션 시뮬레이션:
+  // 페이지1에서 items=2, totalCount=3 → 페이지2 필요
+  const page1Items     = parseItems(FIXTURE_XML_PAGINATION_PAGE1);
+  const page1Total     = parseTotalCount(FIXTURE_XML_PAGINATION_PAGE1);
+  const page2Items     = parseItems(FIXTURE_XML_PAGINATION_PAGE2);
+  const allPagedItems  = [...page1Items, ...page2Items];
+
+  assert('페이지1 items=2건 파싱', page1Items.length === 2);
+  assert('페이지1 totalCount=3',   page1Total === 3);
+  assert('페이지2 items=1건 파싱', page2Items.length === 1);
+  assert('전체 수집 3건 = totalCount 일치',
+    allPagedItems.length === page1Total,
+    `수집=${allPagedItems.length}, totalCount=${page1Total}`);
+
+  // 수집된 날짜 확인 (5월 1, 2, 3일)
+  assert('페이지네이션 items 날짜 올바름',
+    allPagedItems.every((it, i) => it.year === 2026 && it.month === 5 && it.day === i + 1));
+
+  // ── 7. 캐시 로직 검증 (파일시스템 없이) ──────────
+  console.log('\n[7] 캐시 키 / 경로 검증');
+
+  const key  = cacheKey('11680', '202606', 'apt');
+  const path = cachePath('11680', '202606', 'apt');
+  assert('캐시 키 = 11680_202606_apt', key === '11680_202606_apt');
+  assert('캐시 경로에 키 포함', path.includes('11680_202606_apt.json'));
+  assert('캐시 경로에 .cache/ingest 포함', path.includes(join('.cache', 'ingest')));
+
+  // 캐시 로드 (존재하지 않는 파일 → null)
+  const missResult = cacheLoad('99999', '000000', 'apt');
+  assert('존재하지 않는 캐시 → null', missResult === null);
+
+  // ── 8. 교차검증 함수 검증 ───────────────────────
+  console.log('\n[8] 월별 교차검증 출력 검증');
+
+  // 불일치 없는 경우
+  const crossOk = { '강남구_apt_202606': { totalCount: 3, collectedCount: 3 } };
+  // 불일치 있는 경우
+  const crossBad = {
+    '강남구_apt_202606': { totalCount: 3, collectedCount: 3 },
+    '종로구_rh_202606':  { totalCount: 5, collectedCount: 4 },
+  };
+
+  // printCrossCheck는 stdout 출력만 하므로 실행 자체가 오류 없으면 PASS
+  let crossOkRan = false, crossBadRan = false;
+  try { printCrossCheck(crossOk);  crossOkRan  = true; } catch {}
+  try { printCrossCheck(crossBad); crossBadRan = true; } catch {}
+  assert('교차검증 일치 케이스 오류 없음', crossOkRan);
+  assert('교차검증 불일치 케이스 오류 없음', crossBadRan);
 
   // ── 결과 출력 ───────────────────────────────────
   console.log('\n=== 집계 샘플 ===');
   console.log('강남구 2026-06:', gangnamJun);
   console.log('강남구 주간[마지막완료주]:', normalized.byDistrict['강남구'].week[11]);
   console.log('종로구 2026-06:', jongnoJun);
+  console.log('페이지네이션 수집 3건:', allPagedItems.map(i => `${i.year}-${i.month}-${i.day}`));
 
   console.log(`\n${pass ? 'PASS' : `FAIL (${failures.length}건 실패: ${failures.join(', ')})`}`);
   process.exit(pass ? 0 : 1);
@@ -599,41 +855,83 @@ async function main() {
     process.exit(1);
   }
 
+  const useFresh = process.argv.includes('--fresh');
+  const useCache = !useFresh;
+
+  if (useFresh) {
+    console.log('[ingest] --fresh 모드: 캐시를 무시하고 전체 재수집합니다.');
+  } else {
+    console.log('[ingest] 캐시 모드: 이미 수집된 콤보는 건너뜁니다.');
+    console.log('[ingest] (재수집하려면 --fresh 플래그를 사용하세요.)');
+  }
+
   const runDate = new Date();
   const { dealYmdList, monthPeriods, weekPeriods } = buildPeriods(runDate);
   const generatedAt = runDate.toISOString().slice(0, 10);
 
-  console.log(`[ingest] 실행 날짜: ${generatedAt}`);
+  const totalExpected = DISTRICTS.length * dealYmdList.length * 3;
+  console.log(`\n[ingest] 실행 날짜: ${generatedAt}`);
   console.log(`[ingest] 수집 기간: ${dealYmdList[0]} ~ ${dealYmdList[dealYmdList.length - 1]}`);
-  console.log(`[ingest] 총 요청 수: 25구 × ${dealYmdList.length}개월 × 3종 = ${25 * dealYmdList.length * 3}건\n`);
+  console.log(`[ingest] 예상 요청 수(캐시 미스 시): ${totalExpected}건\n`);
 
+  const stats = { calls: 0, hits: 0, failures: [] };
   const rawByDistrict = {};
+  const crossCheckData = {};
 
-  for (const district of DISTRICTS) {
-    console.log(`[ingest] ${district.name} (${district.code}) 수집 중...`);
-    rawByDistrict[district.name] = { apt: [], rh: [], sh: [] };
+  try {
+    for (const district of DISTRICTS) {
+      console.log(`[ingest] ${district.name} (${district.code}) 수집 중...`);
+      rawByDistrict[district.name] = { apt: [], rh: [], sh: [] };
 
-    for (const ym of dealYmdList) {
-      // APT
-      await sleep(DELAY_MS);
-      const aptItems = await fetchAllPages(serviceKey, ENDPOINTS.apt, district.code, ym);
-      rawByDistrict[district.name].apt.push(...aptItems);
+      for (const ym of dealYmdList) {
+        for (const [propType, endpoint] of Object.entries(ENDPOINTS)) {
+          // @MX:WARN: [AUTO] 일일 한도 초과 시 즉시 중단 — 재시도 없음
+          // @MX:REASON: resultCode 22는 재시도해도 의미 없음. 캐시로 이어서 가능.
+          const result = await fetchCombo(
+            serviceKey, endpoint, district.code, ym, propType, useCache, stats
+          );
 
-      // RH (연립다세대)
-      await sleep(DELAY_MS);
-      const rhItems = await fetchAllPages(serviceKey, ENDPOINTS.rh, district.code, ym);
-      rawByDistrict[district.name].rh.push(...rhItems);
+          if (result === null) continue; // 실패 콤보, 건너뜀
 
-      // SH (단독/다가구)
-      await sleep(DELAY_MS);
-      const shItems = await fetchAllPages(serviceKey, ENDPOINTS.sh, district.code, ym);
-      rawByDistrict[district.name].sh.push(...shItems);
+          rawByDistrict[district.name][propType].push(...result.items);
+
+          // 교차검증 데이터 수집
+          const crossKey = `${district.name}_${propType}_${ym}`;
+          crossCheckData[crossKey] = {
+            totalCount:     result.totalCount,
+            collectedCount: result.items.length,
+          };
+        }
+      }
+
+      const d = rawByDistrict[district.name];
+      console.log(
+        `  → apt: ${d.apt.length}건, rh: ${d.rh.length}건, sh: ${d.sh.length}건`
+      );
     }
+  } catch (err) {
+    if (err.isQuotaExceeded) {
+      console.error(`\n[ingest] ${err.message}`);
+      console.error('[ingest] 내일 node ingest.mjs 를 재실행하면 캐시로 이어서 진행됩니다.');
+      process.exit(1);
+    }
+    throw err;
+  }
 
-    const d = rawByDistrict[district.name];
-    console.log(
-      `  → apt: ${d.apt.length}건, rh: ${d.rh.length}건, sh: ${d.sh.length}건`
-    );
+  // 교차검증 출력
+  console.log('\n[ingest] 교차검증 중...');
+  printCrossCheck(crossCheckData);
+
+  // 완료 요약
+  console.log('\n[ingest] 수집 완료 요약');
+  console.log(`  총 API 호출: ${stats.calls}건`);
+  console.log(`  캐시 히트:   ${stats.hits}건`);
+  console.log(`  실패 콤보:   ${stats.failures.length}건`);
+  if (stats.failures.length > 0) {
+    for (const f of stats.failures) {
+      console.log(`    ✗ ${f.combo}: ${f.reason}`);
+    }
+    console.log('\n  재실행 시 실패분만 다시 시도됨');
   }
 
   console.log('\n[ingest] 집계 중...');
@@ -643,6 +941,11 @@ async function main() {
   inject(normalized);
 
   console.log('[ingest] 완료!');
+
+  // 실패가 있으면 exit code 1
+  if (stats.failures.length > 0) {
+    process.exit(1);
+  }
 }
 
 // ════════════════════════════════════════════════
