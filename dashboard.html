@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>서울 부동산 거래량 대시보드</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4">
+
+<!-- ─────────────────────────────────────────────
+  1. 헤더
+───────────────────────────────────────────── -->
+<header class="max-w-6xl mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 pb-3">
+  <div>
+    <h1 class="text-xl font-bold tracking-tight">서울시 25개구 주택 거래량 대시보드</h1>
+    <p class="text-slate-400 text-xs mt-0.5">마지막 업데이트: 2026-07-06</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <!-- 주간/월간 토글 (버튼 2개) -->
+    <div class="flex bg-slate-800 rounded-lg p-0.5 gap-0.5">
+      <button id="btnWeek" onclick="setGranularity('week')"
+        class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white">주간</button>
+      <button id="btnMonth" onclick="setGranularity('month')"
+        class="px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white">월간</button>
+    </div>
+    <span class="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium">목데이터</span>
+  </div>
+</header>
+
+<!-- ─────────────────────────────────────────────
+  2. KPI 카드
+───────────────────────────────────────────── -->
+<section class="max-w-6xl mx-auto mb-4 grid grid-cols-2 gap-3">
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+    <p class="text-slate-400 text-xs mb-1">서울 전체 아파트 거래</p>
+    <div class="flex items-baseline gap-2">
+      <span class="text-2xl font-bold text-white" id="kpiApt">—</span>
+      <span class="text-slate-400 text-xs">건</span>
+    </div>
+    <p class="text-xs mt-1 font-semibold" id="kpiAptDelta">—</p>
+  </div>
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+    <p class="text-slate-400 text-xs mb-1">서울 전체 비아파트 거래</p>
+    <div class="flex items-baseline gap-2">
+      <span class="text-2xl font-bold text-indigo-300" id="kpiNon">—</span>
+      <span class="text-slate-400 text-xs">건</span>
+    </div>
+    <p class="text-xs mt-1 font-semibold" id="kpiNonDelta">—</p>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
+  3. 바 차트 (25개구 거래량, 클릭으로 구 선택)
+───────────────────────────────────────────── -->
+<section class="max-w-6xl mx-auto mb-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
+  <p class="text-xs text-slate-400 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택)</p>
+  <div class="h-56">
+    <canvas id="barChart"></canvas>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
+  4. 라인 차트 (선택 구 시계열)
+───────────────────────────────────────────── -->
+<section class="max-w-6xl mx-auto mb-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
+  <p class="text-xs text-slate-400 mb-1">선택 구 추이 — <span id="lineChartTitle" class="text-white font-semibold">강남구</span></p>
+  <div class="h-48">
+    <canvas id="lineChart"></canvas>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
+  5. 기간 네비게이션
+───────────────────────────────────────────── -->
+<section class="max-w-6xl mx-auto flex items-center justify-center gap-4">
+  <button id="btnPrev" onclick="navigate(-1)"
+    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors">
+    ← 이전
+  </button>
+  <span id="periodLabel" class="text-base font-bold text-indigo-300 min-w-32 text-center">—</span>
+  <button id="btnNext" onclick="navigate(+1)"
+    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors">
+    다음 →
+  </button>
+</section>
+
+<!-- ─────────────────────────────────────────────
+  스크립트
+───────────────────────────────────────────── -->
+<script>
+// ════════════════════════════════════════════════
+//  고정 기준일 (결정론적 데이터 생성)
+// ════════════════════════════════════════════════
+const TODAY = new Date('2026-07-06');
+
+// ════════════════════════════════════════════════
+//  기준 데이터 (레퍼런스에서 가져온 25개구 값)
+// ════════════════════════════════════════════════
+const baseAptData = {
+  "강동구":385,"강남구":294,"서초구":241,"송파구":412,"성북구":356,"동대문구":298,
+  "강북구":112,"도봉구":184,"노원구":512,"중랑구":165,"광진구":142,"성동구":311,
+  "은평구":245,"서대문구":231,"마포구":328,"강서구":289,"양천구":315,"구로구":264,
+  "금천구":98,"영등포구":295,"동작구":214,"관악구":152,"종로구":64,"중구":115,"용산구":142
+};
+const baseNonAptData = {
+  "강동구":412,"강남구":185,"서초구":198,"송파구":345,"성북구":584,"동대문구":421,
+  "강북구":389,"도봉구":265,"노원구":211,"중랑구":498,"광진구":452,"성동구":142,
+  "은평구":612,"서대문구":311,"마포구":215,"강서구":642,"양천구":298,"구로구":342,
+  "금천구":276,"영등포구":184,"동작구":356,"관악구":521,"종로구":185,"중구":132,"용산구":198
+};
+const DISTRICTS = Object.keys(baseAptData);
+
+// ════════════════════════════════════════════════
+//  DataProvider — 이 객체만 교체하면 실데이터 연동 가능
+//  (나중에 실제 API 프록시로 교체할 유일한 지점)
+// ════════════════════════════════════════════════
+const dataProvider = (() => {
+
+  // 월별 사이클 멀티플라이어 (인덱스 0 = 가장 오래된 달)
+  // 아파트: 완만히 감소 0.90→0.85, 비아파트: 완만히 상승 0.95→1.00
+  function _monthMultiplier(idx) {
+    const t = idx / 11; // 0..1
+    return {
+      apt:    0.90 - t * 0.05,
+      nonApt: 0.95 + t * 0.05
+    };
+  }
+
+  // 결정론적 주별 변동 (Math.sin 기반, 난수 없음)
+  function _weekVariation(idx) {
+    return 1 + Math.sin(idx) * 0.06;
+  }
+
+  // 12개월 기간 키 배열 생성 (오래된 순, 가장 최근 = 지난 완료 월)
+  // 진행 중인 당월(부분 집계)은 제외 — 주간과 동일 규칙
+  function _buildMonthPeriods() {
+    const periods = [];
+    for (let i = 12; i >= 1; i--) {
+      const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      periods.push(`${y}-${m}`);
+    }
+    return periods;
+  }
+
+  // 12주 기간 키 배열 생성 (오래된 순, 가장 최근 = 지난 완료 주)
+  function _buildWeekPeriods() {
+    // 오늘 기준 이번 주 월요일
+    const day = TODAY.getDay(); // 0=일,1=월..6=토
+    const daysToMon = day === 0 ? 6 : day - 1;
+    const thisMon = new Date(TODAY);
+    thisMon.setDate(TODAY.getDate() - daysToMon);
+
+    const periods = [];
+    // 지난 12주 (이번 주 제외, 즉 11주 전 ~ 1주 전)
+    for (let i = 12; i >= 1; i--) {
+      const mon = new Date(thisMon);
+      mon.setDate(thisMon.getDate() - i * 7);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      const fmt = d =>
+        `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      periods.push(`${fmt(mon)}~${fmt(sun)}`);
+    }
+    return periods;
+  }
+
+  // 구별 월별 시계열 (아파트/비아파트)
+  function _districtMonthlySeq(district) {
+    return _buildMonthPeriods().map((_, idx) => {
+      const m = _monthMultiplier(idx);
+      return {
+        apt:    Math.max(5, Math.floor(baseAptData[district]    * m.apt)),
+        nonApt: Math.max(5, Math.floor(baseNonAptData[district] * m.nonApt))
+      };
+    });
+  }
+
+  // 구별 주별 시계열
+  function _districtWeeklySeq(district) {
+    const monthSeqs = _districtMonthlySeq(district);
+    // 최근 월 값을 1/4.3 스케일로 축소하여 주간값 산출
+    const latestMonthApt    = monthSeqs[11].apt;
+    const latestMonthNonApt = monthSeqs[11].nonApt;
+    return _buildWeekPeriods().map((_, idx) => {
+      const v = _weekVariation(idx);
+      return {
+        apt:    Math.max(5, Math.floor(latestMonthApt    / 4.3 * v)),
+        nonApt: Math.max(5, Math.floor(latestMonthNonApt / 4.3 * v))
+      };
+    });
+  }
+
+  // ── 공개 인터페이스 ──────────────────────────────
+  return {
+    /** 기간 키 배열 반환 (granularity: 'week'|'month') */
+    getPeriods(granularity) {
+      return granularity === 'week' ? _buildWeekPeriods() : _buildMonthPeriods();
+    },
+
+    /** 특정 기간의 25개구 총계 {district, apt, nonApt} 배열 */
+    getDistrictTotals(granularity, periodKey) {
+      return DISTRICTS.map(d => {
+        const seq = granularity === 'week' ? _districtWeeklySeq(d) : _districtMonthlySeq(d);
+        const periods = this.getPeriods(granularity);
+        const idx = periods.indexOf(periodKey);
+        const v = idx >= 0 ? seq[idx] : seq[seq.length - 1];
+        return { district: d, apt: v.apt, nonApt: v.nonApt };
+      });
+    },
+
+    /** 특정 구의 전체 기간 시계열 [{apt, nonApt}, ...] */
+    getDistrictTrend(district, granularity) {
+      return granularity === 'week'
+        ? _districtWeeklySeq(district)
+        : _districtMonthlySeq(district);
+    },
+
+    /** 서울 전체 합계 {apt, nonApt} */
+    getSeoulTotals(granularity, periodKey) {
+      const rows = this.getDistrictTotals(granularity, periodKey);
+      return rows.reduce(
+        (acc, r) => ({ apt: acc.apt + r.apt, nonApt: acc.nonApt + r.nonApt }),
+        { apt: 0, nonApt: 0 }
+      );
+    }
+  };
+})();
+
+// ════════════════════════════════════════════════
+//  상태
+// ════════════════════════════════════════════════
+let granularity   = 'week';
+let selectedDistrict = '강남구';
+let periods       = [];
+let periodIndex   = 0; // 현재 선택 기간 인덱스
+
+// Chart.js 인스턴스
+let barChartInst  = null;
+let lineChartInst = null;
+
+// ════════════════════════════════════════════════
+//  헬퍼
+// ════════════════════════════════════════════════
+function formatPeriodLabel(key, gran) {
+  if (gran === 'month') {
+    const [y, m] = key.split('-');
+    return `${y}년 ${parseInt(m)}월`;
+  }
+  // week: "2026-06-29~2026-07-05"
+  const parts = key.split('~');
+  return `${parts[0]} ~ ${parts[1].slice(5)}`; // "2026-06-29 ~ 07-05"
+}
+
+function deltaPct(curr, prev) {
+  if (!prev) return null;
+  const pct = ((curr - prev) / prev * 100).toFixed(1);
+  return parseFloat(pct);
+}
+
+function renderDelta(elementId, curr, prev) {
+  const el = document.getElementById(elementId);
+  const pct = deltaPct(curr, prev);
+  if (pct === null) { el.textContent = '—'; return; }
+  if (pct > 0) {
+    el.textContent = `▲ ${pct}%`;
+    el.className = 'text-xs mt-1 font-semibold text-red-400';
+  } else if (pct < 0) {
+    el.textContent = `▼ ${Math.abs(pct)}%`;
+    el.className = 'text-xs mt-1 font-semibold text-blue-400';
+  } else {
+    el.textContent = `— 0%`;
+    el.className = 'text-xs mt-1 font-semibold text-slate-400';
+  }
+}
+
+// ════════════════════════════════════════════════
+//  렌더링
+// ════════════════════════════════════════════════
+function renderKPI() {
+  const periodKey     = periods[periodIndex];
+  const prevPeriodKey = periodIndex > 0 ? periods[periodIndex - 1] : null;
+
+  const curr = dataProvider.getSeoulTotals(granularity, periodKey);
+  const prev = prevPeriodKey ? dataProvider.getSeoulTotals(granularity, prevPeriodKey) : null;
+
+  document.getElementById('kpiApt').textContent  = curr.apt.toLocaleString();
+  document.getElementById('kpiNon').textContent  = curr.nonApt.toLocaleString();
+  renderDelta('kpiAptDelta', curr.apt,    prev?.apt);
+  renderDelta('kpiNonDelta', curr.nonApt, prev?.nonApt);
+}
+
+function renderBarChart() {
+  const periodKey = periods[periodIndex];
+  const rows = dataProvider.getDistrictTotals(granularity, periodKey);
+
+  // 총량 내림차순 정렬
+  rows.sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+
+  const labels = rows.map(r => r.district);
+  const aptVals    = rows.map(r => r.apt);
+  const nonAptVals = rows.map(r => r.nonApt);
+
+  const config = {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '아파트', data: aptVals,    backgroundColor: 'rgba(99,102,241,0.8)',  borderRadius: 2 },
+        { label: '비아파트', data: nonAptVals, backgroundColor: 'rgba(148,163,184,0.6)', borderRadius: 2 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e293b' } },
+        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+      },
+      onClick(evt, elements) {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        selectDistrict(labels[idx]);
+      }
+    }
+  };
+
+  if (barChartInst) {
+    barChartInst.data.labels           = labels;
+    barChartInst.data.datasets[0].data = aptVals;
+    barChartInst.data.datasets[1].data = nonAptVals;
+    barChartInst.update();
+  } else {
+    barChartInst = new Chart(document.getElementById('barChart'), config);
+  }
+}
+
+function renderLineChart() {
+  document.getElementById('lineChartTitle').textContent = selectedDistrict;
+  const trend  = dataProvider.getDistrictTrend(selectedDistrict, granularity);
+  const labels = dataProvider.getPeriods(granularity).map((k, i) => {
+    if (granularity === 'month') {
+      const [y, m] = k.split('-');
+      return `${y.slice(2)}.${m}`;
+    }
+    // 주간: 짧게 월/일
+    return k.split('~')[0].slice(5); // "06-29"
+  });
+
+  const aptVals    = trend.map(t => t.apt);
+  const nonAptVals = trend.map(t => t.nonApt);
+
+  const config = {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '아파트', data: aptVals,
+          borderColor: 'rgb(99,102,241)', backgroundColor: 'rgba(99,102,241,0.1)',
+          tension: 0.3, pointRadius: 3
+        },
+        {
+          label: '비아파트', data: nonAptVals,
+          borderColor: 'rgb(148,163,184)', backgroundColor: 'rgba(148,163,184,0.1)',
+          tension: 0.3, pointRadius: 3
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e293b' } },
+        y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e293b' } }
+      }
+    }
+  };
+
+  if (lineChartInst) {
+    lineChartInst.data.labels           = labels;
+    lineChartInst.data.datasets[0].data = aptVals;
+    lineChartInst.data.datasets[1].data = nonAptVals;
+    lineChartInst.update();
+  } else {
+    lineChartInst = new Chart(document.getElementById('lineChart'), config);
+  }
+}
+
+function renderNavigation() {
+  const label = formatPeriodLabel(periods[periodIndex], granularity);
+  document.getElementById('periodLabel').textContent = label;
+
+  const prevBtn = document.getElementById('btnPrev');
+  const nextBtn = document.getElementById('btnNext');
+
+  // 범위 끝에서 버튼 비활성화
+  if (periodIndex <= 0) {
+    prevBtn.setAttribute('disabled', '');
+  } else {
+    prevBtn.removeAttribute('disabled');
+  }
+
+  if (periodIndex >= periods.length - 1) {
+    nextBtn.setAttribute('disabled', '');
+  } else {
+    nextBtn.removeAttribute('disabled');
+  }
+}
+
+function renderAll() {
+  renderKPI();
+  renderBarChart();
+  renderLineChart();
+  renderNavigation();
+}
+
+// ════════════════════════════════════════════════
+//  이벤트 핸들러
+// ════════════════════════════════════════════════
+function setGranularity(gran) {
+  granularity = gran;
+  periods     = dataProvider.getPeriods(gran);
+  // 기본값: 가장 최근 완료 기간 = 마지막 인덱스
+  periodIndex = periods.length - 1;
+
+  // 토글 버튼 스타일 업데이트
+  const wBtn = document.getElementById('btnWeek');
+  const mBtn = document.getElementById('btnMonth');
+  if (gran === 'week') {
+    wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white';
+    mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white';
+  } else {
+    mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white';
+    wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-400 hover:text-white';
+  }
+
+  renderAll();
+}
+
+function navigate(dir) {
+  const newIdx = periodIndex + dir;
+  if (newIdx < 0 || newIdx >= periods.length) return;
+  periodIndex = newIdx;
+  renderAll();
+}
+
+function selectDistrict(district) {
+  selectedDistrict = district;
+  renderLineChart();
+}
+
+// ════════════════════════════════════════════════
+//  초기화
+// ════════════════════════════════════════════════
+setGranularity('week');
+</script>
+</body>
+</html>
