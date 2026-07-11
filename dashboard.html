@@ -52,9 +52,24 @@
 </section>
 
 <!-- ─────────────────────────────────────────────
-  3. 타임라인 슬라이더 + 자동재생
+  3. 타임라인 슬라이더 + 자동재생 + 연도/범위 필터
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+  <!-- 3-A: 연도 빠른 필터 (월간 전용) -->
+  <div id="yearFilterRow" class="flex flex-wrap items-center gap-1.5 mb-3">
+    <span class="text-xs text-slate-500 font-medium mr-1">연도:</span>
+    <div id="yearBtnGroup" class="flex flex-wrap gap-1" role="group" aria-label="연도 선택"></div>
+  </div>
+  <!-- 3-B: 시작/종료 월 드롭다운 (월간 전용) -->
+  <div id="rangeRow" class="flex flex-wrap items-center gap-2 mb-3">
+    <span class="text-xs text-slate-500 font-medium">범위:</span>
+    <select id="rangeStart" aria-label="시작 월"
+      class="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed"></select>
+    <span class="text-xs text-slate-400">~</span>
+    <select id="rangeEnd" aria-label="종료 월"
+      class="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed"></select>
+  </div>
+  <!-- 3-C: 슬라이더 + 네비게이션 -->
   <div class="flex flex-wrap items-center gap-2">
     <button id="btnPrev" onclick="navigate(-1)" aria-label="이전 기간"
       class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
@@ -23512,8 +23527,9 @@ const dataProvider = (() => {
 
   // 월별 사이클 멀티플라이어 (인덱스 0 = 가장 오래된 달)
   // 아파트: 완만히 감소 0.90→0.85, 비아파트: 완만히 상승 0.95→1.00
-  function _monthMultiplier(idx) {
-    const t = idx / 11; // 0..1
+  // total: 전체 기간 수 (동적 계산)
+  function _monthMultiplier(idx, total) {
+    const t = total > 1 ? idx / (total - 1) : 0; // 0..1
     return {
       apt:    0.90 - t * 0.05,
       nonApt: 0.95 + t * 0.05
@@ -23525,15 +23541,19 @@ const dataProvider = (() => {
     return 1 + Math.sin(idx) * 0.06;
   }
 
-  // 12개월 기간 키 배열 생성 (오래된 순, 가장 최근 = 지난 완료 월)
-  // 진행 중인 당월(부분 집계)은 제외 — 주간과 동일 규칙
+  // 월별 기간 키 배열 생성 (오래된 순, 가장 최근 = 지난 완료 월)
+  // 2022-01부터 TODAY 직전 완료 월까지 (진행 중인 당월 제외)
   function _buildMonthPeriods() {
     const periods = [];
-    for (let i = 12; i >= 1; i--) {
-      const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      periods.push(`${y}-${m}`);
+    // 가장 최근 완료 월: 지난 달 (TODAY 기준)
+    const lastY = TODAY.getMonth() === 0 ? TODAY.getFullYear() - 1 : TODAY.getFullYear();
+    const lastM = TODAY.getMonth() === 0 ? 12 : TODAY.getMonth(); // 1-based
+    // 2022-01부터 lastY-lastM까지
+    let y = 2022, m = 1;
+    while (y < lastY || (y === lastY && m <= lastM)) {
+      periods.push(`${y}-${String(m).padStart(2, '0')}`);
+      m++;
+      if (m > 12) { m = 1; y++; }
     }
     return periods;
   }
@@ -23562,8 +23582,10 @@ const dataProvider = (() => {
 
   // 구별 월별 시계열 (아파트/비아파트) — 목데이터용
   function _districtMonthlySeq(district) {
-    return _buildMonthPeriods().map((_, idx) => {
-      const m = _monthMultiplier(idx);
+    const mp = _buildMonthPeriods();
+    const total = mp.length;
+    return mp.map((_, idx) => {
+      const m = _monthMultiplier(idx, total);
       return {
         apt:    Math.max(5, Math.floor(baseAptData[district]    * m.apt)),
         nonApt: Math.max(5, Math.floor(baseNonAptData[district] * m.nonApt))
@@ -23575,8 +23597,8 @@ const dataProvider = (() => {
   function _districtWeeklySeq(district) {
     const monthSeqs = _districtMonthlySeq(district);
     // 최근 월 값을 1/4.3 스케일로 축소하여 주간값 산출
-    const latestMonthApt    = monthSeqs[11].apt;
-    const latestMonthNonApt = monthSeqs[11].nonApt;
+    const latestMonthApt    = monthSeqs[monthSeqs.length - 1].apt;
+    const latestMonthNonApt = monthSeqs[monthSeqs.length - 1].nonApt;
     return _buildWeekPeriods().map((_, idx) => {
       const v = _weekVariation(idx);
       return {
@@ -23668,11 +23690,16 @@ const dataProvider = (() => {
 
 // ════════════════════════════════════════════════
 //  상태 (단일 소스)
+//  viewRange: 활성 periods 배열 내 유효 범위 인덱스
+//  periodIndex는 항상 [viewRange.start, viewRange.end] 안에 있어야 함
 // ════════════════════════════════════════════════
 let granularity      = 'week';
 let selectedDistrict = '강남구';
 let periods          = [];
 let periodIndex      = 0;
+// @MX:ANCHOR: [AUTO] viewRange is the single source of truth for slider/nav/autoplay range
+// @MX:REASON: 4-control desync bug prevention — all controls read from this, never write to each other
+let viewRange        = { start: 0, end: 0 };
 
 // Chart.js 인스턴스 (단일 canvas 재사용)
 let districtChartInst = null;
@@ -23929,21 +23956,28 @@ function renderCommentary() {
 
   if (periodIndex === periods.length - 1) {
     text += ' ※ 최신 기간은 신고 진행 중이라 확정치가 아닙니다.';
+  } else if (viewRange.end < periods.length - 1 && periodIndex === viewRange.end) {
+    // 범위 필터 적용 중이며 해당 범위의 끝에 있을 때도 무관
   }
 
   document.getElementById('commentary').textContent = text;
 }
 
-// 기간 네비게이션 + 슬라이더 동기화
+// 기간 네비게이션 + 슬라이더 동기화 + 연도버튼/드롭다운 동기화
 function renderNavigation() {
   const label = formatPeriodLabel(periods[periodIndex], granularity);
   document.getElementById('periodLabel').textContent = label;
-  document.getElementById('btnPrev').disabled = periodIndex <= 0;
-  document.getElementById('btnNext').disabled = periodIndex >= periods.length - 1;
+  // Prev/Next: clamp within [viewRange.start, viewRange.end]
+  document.getElementById('btnPrev').disabled = periodIndex <= viewRange.start;
+  document.getElementById('btnNext').disabled = periodIndex >= viewRange.end;
 
   const slider = document.getElementById('timeSlider');
-  slider.max   = String(periods.length - 1);
+  slider.min   = String(viewRange.start);
+  slider.max   = String(viewRange.end);
   slider.value = String(periodIndex);
+
+  // 연도 버튼/드롭다운 DOM 동기화
+  _syncYearControls();
 }
 
 // E. 전체 25구 바 차트 (현재 기간, 별도 인스턴스)
@@ -24019,6 +24053,180 @@ function renderBarChart() {
   }
 }
 
+// ════════════════════════════════════════════════
+//  연도 빠른 필터 + 범위 드롭다운 (월간 전용)
+// ════════════════════════════════════════════════
+
+// @MX:ANCHOR: [AUTO] _buildYearControls populates year-button group and start/end dropdowns
+// @MX:REASON: called once per granularity switch; heavy DOM rebuild — must stay idempotent
+function _buildYearControls() {
+  const isMonth = granularity === 'month';
+  const disabledTitle = '주간 데이터는 최근 12주만 제공됩니다';
+
+  // ── 연도 버튼 ──────────────────────────────────
+  const yearBtnGroup = document.getElementById('yearBtnGroup');
+  yearBtnGroup.innerHTML = '';
+
+  if (isMonth) {
+    // 데이터에서 유니크 연도 추출
+    const years = [...new Set(periods.map(k => k.split('-')[0]))].sort();
+
+    // "전체" 버튼
+    const allBtn = document.createElement('button');
+    allBtn.id = 'yearBtn-all';
+    allBtn.textContent = '전체';
+    allBtn.onclick = () => _setYearFilter(null);
+    allBtn.className = _yearBtnClass(false); // will be updated in _syncYearControls
+    yearBtnGroup.appendChild(allBtn);
+
+    // 각 연도 버튼
+    years.forEach(y => {
+      const btn = document.createElement('button');
+      btn.id = `yearBtn-${y}`;
+      btn.textContent = y;
+      btn.onclick = () => _setYearFilter(y);
+      btn.className = _yearBtnClass(false);
+      yearBtnGroup.appendChild(btn);
+    });
+  } else {
+    // 주간: 버튼 하나 ("전체 비활성") 로 표시
+    const disabledEl = document.createElement('span');
+    disabledEl.className = 'text-xs text-slate-400 italic';
+    disabledEl.textContent = '주간 모드에서는 사용 불가';
+    disabledEl.title = disabledTitle;
+    yearBtnGroup.appendChild(disabledEl);
+  }
+
+  // ── 드롭다운 ──────────────────────────────────
+  const startSel = document.getElementById('rangeStart');
+  const endSel   = document.getElementById('rangeEnd');
+  startSel.innerHTML = '';
+  endSel.innerHTML   = '';
+
+  if (isMonth) {
+    periods.forEach((key, idx) => {
+      const [y, m] = key.split('-');
+      const label  = `${y}-${m}`;
+      const os = document.createElement('option');
+      os.value = idx; os.textContent = label;
+      startSel.appendChild(os);
+      const oe = document.createElement('option');
+      oe.value = idx; oe.textContent = label;
+      endSel.appendChild(oe);
+    });
+    startSel.disabled = false;
+    endSel.disabled   = false;
+    startSel.title    = '';
+    endSel.title      = '';
+    startSel.onchange = _onRangeStartChange;
+    endSel.onchange   = _onRangeEndChange;
+  } else {
+    startSel.disabled = true;
+    endSel.disabled   = true;
+    startSel.title    = disabledTitle;
+    endSel.title      = disabledTitle;
+    startSel.onchange = null;
+    endSel.onchange   = null;
+  }
+}
+
+function _yearBtnClass(active) {
+  return active
+    ? 'px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white border border-indigo-600 transition-colors'
+    : 'px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-slate-600 border border-slate-300 hover:bg-slate-100 transition-colors';
+}
+
+// 연도 버튼 및 드롭다운 selected 값을 현재 viewRange에 맞게 동기화
+function _syncYearControls() {
+  if (granularity !== 'month') return;
+
+  const startKey = periods[viewRange.start];
+  const endKey   = periods[viewRange.end];
+  const startY   = startKey ? startKey.split('-')[0] : null;
+  const endY     = endKey   ? endKey.split('-')[0]   : null;
+
+  // 연도 버튼 하이라이트
+  const years = [...new Set(periods.map(k => k.split('-')[0]))].sort();
+  const isFull = viewRange.start === 0 && viewRange.end === periods.length - 1;
+
+  // 현재 범위가 특정 연도 전체인지 판별
+  let activeYear = null;
+  if (!isFull) {
+    years.forEach(y => {
+      const { first, last } = _yearRange(y);
+      if (viewRange.start === first && viewRange.end === last) {
+        activeYear = y;
+      }
+    });
+  }
+
+  const allBtn = document.getElementById('yearBtn-all');
+  if (allBtn) allBtn.className = _yearBtnClass(isFull && activeYear === null);
+
+  years.forEach(y => {
+    const btn = document.getElementById(`yearBtn-${y}`);
+    if (btn) btn.className = _yearBtnClass(y === activeYear);
+  });
+
+  // 드롭다운 선택값
+  const startSel = document.getElementById('rangeStart');
+  const endSel   = document.getElementById('rangeEnd');
+  startSel.value = String(viewRange.start);
+  endSel.value   = String(viewRange.end);
+}
+
+// 특정 연도의 첫/마지막 periods 인덱스 반환
+function _yearRange(year) {
+  let first = -1, last = -1;
+  periods.forEach((key, idx) => {
+    if (key.startsWith(year + '-')) {
+      if (first === -1) first = idx;
+      last = idx;
+    }
+  });
+  return { first, last };
+}
+
+// 연도 버튼 클릭 핸들러
+function _setYearFilter(year) {
+  if (granularity !== 'month') return;
+  if (year === null) {
+    // 전체
+    viewRange = { start: 0, end: periods.length - 1 };
+  } else {
+    const { first, last } = _yearRange(year);
+    if (first === -1) return;
+    viewRange = { start: first, end: last };
+  }
+  // periodIndex를 범위 안으로 클램핑
+  periodIndex = Math.max(viewRange.start, Math.min(viewRange.end, periodIndex));
+  // 범위 끝으로 이동 (스펙: year → end)
+  periodIndex = viewRange.end;
+  stopAutoplay();
+  renderAll();
+}
+
+// 드롭다운 변경 핸들러
+function _onRangeStartChange(e) {
+  const newStart = parseInt(e.target.value);
+  let newEnd = viewRange.end;
+  if (newStart > newEnd) newEnd = newStart; // 클램프
+  viewRange = { start: newStart, end: newEnd };
+  periodIndex = Math.max(newStart, Math.min(newEnd, periodIndex));
+  stopAutoplay();
+  renderAll();
+}
+
+function _onRangeEndChange(e) {
+  const newEnd = parseInt(e.target.value);
+  let newStart = viewRange.start;
+  if (newEnd < newStart) newStart = newEnd; // 클램프
+  viewRange = { start: newStart, end: newEnd };
+  periodIndex = Math.max(newStart, Math.min(newEnd, periodIndex));
+  stopAutoplay();
+  renderAll();
+}
+
 function renderAll() {
   renderKPI();
   renderCartogram();
@@ -24068,7 +24276,8 @@ function toggleAutoplay() {
     btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
     btn.setAttribute('aria-pressed', 'true');
     autoplayTimer = setInterval(() => {
-      if (periodIndex >= periods.length - 1) { stopAutoplay(); return; }
+      // viewRange.end에서 정지 (전체 범위가 아닌 선택 범위 내)
+      if (periodIndex >= viewRange.end) { stopAutoplay(); return; }
       periodIndex += 1;
       renderAll();
     }, 1500);
@@ -24080,14 +24289,18 @@ function toggleAutoplay() {
 // ════════════════════════════════════════════════
 document.getElementById('timeSlider').addEventListener('input', e => {
   stopAutoplay();
-  periodIndex = parseInt(e.target.value);
+  const val = parseInt(e.target.value);
+  // clamp within [viewRange.start, viewRange.end]
+  periodIndex = Math.max(viewRange.start, Math.min(viewRange.end, val));
   renderAll();
 });
 
 function setGranularity(gran) {
   granularity = gran;
   periods     = dataProvider.getPeriods(gran);
-  periodIndex = periods.length - 1;
+  // viewRange를 전체 범위로 리셋 (스펙 요구사항)
+  viewRange   = { start: 0, end: periods.length - 1 };
+  periodIndex = viewRange.end;
 
   const wBtn = document.getElementById('btnWeek');
   const mBtn = document.getElementById('btnMonth');
@@ -24099,12 +24312,15 @@ function setGranularity(gran) {
     wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-600 hover:text-slate-900';
   }
   stopAutoplay();
+  // 연도 버튼/드롭다운 DOM 재빌드 (granularity 변경 시마다)
+  _buildYearControls();
   renderAll();
 }
 
 function navigate(dir) {
   const newIdx = periodIndex + dir;
-  if (newIdx < 0 || newIdx >= periods.length) return;
+  // clamp within [viewRange.start, viewRange.end]
+  if (newIdx < viewRange.start || newIdx > viewRange.end) return;
   periodIndex = newIdx;
   renderAll();
 }
