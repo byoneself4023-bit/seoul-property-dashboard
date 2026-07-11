@@ -41,6 +41,11 @@ const PAGE_SIZE = 1000;  // numOfRows
 const MAX_RETRY = 3;     // 지수 백오프 최대 재시도
 const CACHE_DIR = join(__dirname, '.cache', 'ingest');
 
+// 공간 규격 버킷 경계 (전용면적 m²) — 원룸형 ≤40 / 투룸형 40<x≤60 / 쓰리룸+ >60
+const AREA_BUCKETS = { studioMax: 40, twoMax: 60 };
+// 금액대 버킷 경계 (거래금액 만원) — 3억↓ ≤30000 / 3~6억 30000<x≤60000 / 6억↑ >60000
+const PRICE_BUCKETS = { under3Max: 30000, under6Max: 60000 };
+
 // ════════════════════════════════════════════════
 //  25개 서울 자치구 법정동코드
 // ════════════════════════════════════════════════
@@ -191,11 +196,11 @@ export function parseTotalCount(xml) {
 }
 
 /**
- * XML 응답에서 <item> 블록을 추출하고 계약 날짜를 파싱한다.
+ * XML 응답에서 <item> 블록을 추출하고 계약 날짜, 전용면적, 거래금액을 파싱한다.
  * resultCode 검사를 포함한다.
  *
  * @param {string} xml
- * @returns {{ year: number, month: number, day: number|null }[]}
+ * @returns {{ year: number, month: number, day: number|null, area: number|null, amount: number|null }[]}
  */
 export function parseItems(xml) {
   checkResultCode(xml);
@@ -211,10 +216,26 @@ export function parseItems(xml) {
     const monthMatch = block.match(/<dealMonth>\s*(\d+)\s*<\/dealMonth>/) || block.match(/<월>\s*(\d+)\s*<\/월>/);
     const dayMatch   = block.match(/<dealDay>\s*(\d+)\s*<\/dealDay>/)     || block.match(/<일>\s*(\d+)\s*<\/일>/);
     if (!yearMatch || !monthMatch) continue;
+
+    // 전용면적 파싱: 영문 태그 <excluUseAr> 또는 한글 태그 <전용면적>
+    const areaMatch = block.match(/<excluUseAr>\s*([\d.]+)\s*<\/excluUseAr>/) ||
+                      block.match(/<전용면적>\s*([\d.]+)\s*<\/전용면적>/);
+    const area = areaMatch ? parseFloat(areaMatch[1]) : null;
+
+    // 거래금액 파싱: 영문 태그 <dealAmount> 또는 한글 태그 <거래금액>
+    // 값에 쉼표와 공백이 포함될 수 있음 (예: "  82,500") — 제거 후 정수 변환
+    const amountMatch = block.match(/<dealAmount>\s*([\d,\s]+)\s*<\/dealAmount>/) ||
+                        block.match(/<거래금액>\s*([\d,\s]+)\s*<\/거래금액>/);
+    const amount = amountMatch
+      ? parseInt(amountMatch[1].replace(/[,\s]/g, ''), 10)
+      : null;
+
     items.push({
-      year:  parseInt(yearMatch[1],  10),
-      month: parseInt(monthMatch[1], 10),
-      day:   dayMatch ? parseInt(dayMatch[1], 10) : null,
+      year:   parseInt(yearMatch[1],  10),
+      month:  parseInt(monthMatch[1], 10),
+      day:    dayMatch ? parseInt(dayMatch[1], 10) : null,
+      area:   (area !== null && !isNaN(area))     ? area   : null,
+      amount: (amount !== null && !isNaN(amount)) ? amount : null,
     });
   }
   return items;
@@ -245,7 +266,8 @@ function cacheLoad(lawdCd, dealYmd, propType) {
 
 function cacheSave(lawdCd, dealYmd, propType, data) {
   mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(cachePath(lawdCd, dealYmd, propType), JSON.stringify(data), 'utf8');
+  // schemaVersion: 2 를 함께 저장해 구버전 캐시(v1)와 구분
+  writeFileSync(cachePath(lawdCd, dealYmd, propType), JSON.stringify({ schemaVersion: 2, ...data }), 'utf8');
 }
 
 // ════════════════════════════════════════════════
@@ -254,17 +276,26 @@ function cacheSave(lawdCd, dealYmd, propType, data) {
 
 /**
  * 파싱된 item 목록을 monthPeriods / weekPeriods 기준으로 집계한다.
+ * 건수 외에 공간규격별(area) 및 금액대별(amount) 버킷 히스토그램도 반환한다.
  *
- * @param {{ year: number, month: number, day: number|null }[]} items
+ * @param {{ year: number, month: number, day: number|null, area: number|null, amount: number|null }[]} items
  * @param {string[]} monthPeriods   "YYYY-MM" 배열 (오래된순 12개)
  * @param {string[]} weekPeriods    "YYYY-MM-DD~YYYY-MM-DD" 배열 (오래된순 12개)
  * @returns {{
- *   monthly: number[],  // monthPeriods 순서의 건수 배열
- *   weekly:  number[],  // weekPeriods 순서의 건수 배열
+ *   monthly: number[],
+ *   weekly:  number[],
+ *   monthlyArea:  { studio: number[], two: number[], three: number[] },
+ *   weeklyArea:   { studio: number[], two: number[], three: number[] },
+ *   monthlyPrice: { under3: number[], under6: number[], over6: number[] },
+ *   weeklyPrice:  { under3: number[], under6: number[], over6: number[] },
  * }}
  */
 export function aggregateItems(items, monthPeriods, weekPeriods) {
-  const monthMap = {};
+  const n = monthPeriods.length;
+  const w = weekPeriods.length;
+
+  // 건수 집계용
+  const monthMap  = {};
   for (const p of monthPeriods) monthMap[p] = 0;
 
   const weekRanges = weekPeriods.map(p => {
@@ -273,20 +304,66 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
   });
   const weekCount = Object.fromEntries(weekPeriods.map(k => [k, 0]));
 
+  // 면적 버킷 집계용 (인덱스는 monthPeriods / weekPeriods와 1:1 대응)
+  const monthArea  = { studio: new Array(n).fill(0), two: new Array(n).fill(0), three: new Array(n).fill(0) };
+  const weekArea   = { studio: new Array(w).fill(0), two: new Array(w).fill(0), three: new Array(w).fill(0) };
+
+  // 금액 버킷 집계용
+  const monthPrice = { under3: new Array(n).fill(0), under6: new Array(n).fill(0), over6: new Array(n).fill(0) };
+  const weekPrice  = { under3: new Array(w).fill(0), under6: new Array(w).fill(0), over6: new Array(w).fill(0) };
+
+  // 면적 버킷 결정 헬퍼 (null이면 null 반환 → 히스토그램 미반영)
+  function areaBucket(area) {
+    if (area === null) return null;
+    if (area <= AREA_BUCKETS.studioMax) return 'studio';
+    if (area <= AREA_BUCKETS.twoMax)    return 'two';
+    return 'three';
+  }
+
+  // 금액 버킷 결정 헬퍼
+  function priceBucket(amount) {
+    if (amount === null) return null;
+    if (amount <= PRICE_BUCKETS.under3Max) return 'under3';
+    if (amount <= PRICE_BUCKETS.under6Max) return 'under6';
+    return 'over6';
+  }
+
   for (const item of items) {
-    const { year, month, day } = item;
+    const { year, month, day, area, amount } = item;
     const ymKey = `${year}-${String(month).padStart(2, '0')}`;
 
-    if (ymKey in monthMap) {
+    // 월 인덱스
+    const mIdx = monthPeriods.indexOf(ymKey);
+    if (mIdx >= 0) {
+      // 건수 (변경 없음)
       monthMap[ymKey]++;
+
+      // 면적 버킷 (null이면 건너뜀)
+      const ab = areaBucket(area);
+      if (ab !== null) monthArea[ab][mIdx]++;
+
+      // 금액 버킷 (null이면 건너뜀)
+      const pb = priceBucket(amount);
+      if (pb !== null) monthPrice[pb][mIdx]++;
     }
 
     if (day !== null) {
       const itemDateStr =
         `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-      for (const { key, monStr, sunStr } of weekRanges) {
+      for (let wi = 0; wi < weekRanges.length; wi++) {
+        const { key, monStr, sunStr } = weekRanges[wi];
         if (itemDateStr >= monStr && itemDateStr <= sunStr) {
+          // 건수 (변경 없음)
           weekCount[key]++;
+
+          // 면적 버킷
+          const ab = areaBucket(area);
+          if (ab !== null) weekArea[ab][wi]++;
+
+          // 금액 버킷
+          const pb = priceBucket(amount);
+          if (pb !== null) weekPrice[pb][wi]++;
+
           break;
         }
       }
@@ -294,8 +371,12 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
   }
 
   return {
-    monthly: monthPeriods.map(p => monthMap[p]),
-    weekly:  weekPeriods.map(p => weekCount[p]),
+    monthly:      monthPeriods.map(p => monthMap[p]),
+    weekly:       weekPeriods.map(p => weekCount[p]),
+    monthlyArea:  monthArea,
+    weeklyArea:   weekArea,
+    monthlyPrice: monthPrice,
+    weeklyPrice:  weekPrice,
   };
 }
 
@@ -306,11 +387,11 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
 /**
  * 수집된 구별 원시 아이템을 정규화 구조로 조립한다.
  *
- * @param {Object} rawByDistrict  { districtName: { apt: items[], rh: items[], sh: items[] } }
+ * @param {Object} rawByDistrict  { districtName: { apt: items[], rh: items[], sh: items[], offi?: items[] } }
  * @param {string[]} monthPeriods
  * @param {string[]} weekPeriods
  * @param {string}   generatedAt  "YYYY-MM-DD"
- * @returns {Object}  정규화 JSON
+ * @returns {Object}  정규화 JSON (schemaVersion: 2)
  */
 export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, generatedAt) {
   const byDistrict = {};
@@ -323,19 +404,46 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
     const offiItems = raw.offi ?? [];
     const offiAgg = aggregateItems(offiItems, monthPeriods, weekPeriods);
 
+    // 면적별 합산 헬퍼 (apt + rh + sh + offi 전체)
+    // @MX:NOTE: [AUTO] room은 모든 유형(아파트 포함) 면적 합산, price는 비아파트(rh+sh+offi)만
+    const sumArr = (arrs) => arrs[0].map((_, i) => arrs.reduce((s, a) => s + a[i], 0));
+
     byDistrict[name] = {
       month: monthPeriods.map((_, i) => ({
         apt:    aptAgg.monthly[i],
         nonApt: rhAgg.monthly[i] + shAgg.monthly[i] + offiAgg.monthly[i],
+        // 공간규격별: apt + rh + sh + offi 전체 면적 버킷 합산
+        room: {
+          studio: aptAgg.monthlyArea.studio[i] + rhAgg.monthlyArea.studio[i] + shAgg.monthlyArea.studio[i] + offiAgg.monthlyArea.studio[i],
+          two:    aptAgg.monthlyArea.two[i]    + rhAgg.monthlyArea.two[i]    + shAgg.monthlyArea.two[i]    + offiAgg.monthlyArea.two[i],
+          three:  aptAgg.monthlyArea.three[i]  + rhAgg.monthlyArea.three[i]  + shAgg.monthlyArea.three[i]  + offiAgg.monthlyArea.three[i],
+        },
+        // 금액대별: 비아파트(rh + sh + offi)만 집계 — 레이블 "금액대별(비아파트)"
+        price: {
+          under3: rhAgg.monthlyPrice.under3[i] + shAgg.monthlyPrice.under3[i] + offiAgg.monthlyPrice.under3[i],
+          under6: rhAgg.monthlyPrice.under6[i] + shAgg.monthlyPrice.under6[i] + offiAgg.monthlyPrice.under6[i],
+          over6:  rhAgg.monthlyPrice.over6[i]  + shAgg.monthlyPrice.over6[i]  + offiAgg.monthlyPrice.over6[i],
+        },
       })),
       week: weekPeriods.map((_, i) => ({
         apt:    aptAgg.weekly[i],
         nonApt: rhAgg.weekly[i] + shAgg.weekly[i] + offiAgg.weekly[i],
+        room: {
+          studio: aptAgg.weeklyArea.studio[i] + rhAgg.weeklyArea.studio[i] + shAgg.weeklyArea.studio[i] + offiAgg.weeklyArea.studio[i],
+          two:    aptAgg.weeklyArea.two[i]    + rhAgg.weeklyArea.two[i]    + shAgg.weeklyArea.two[i]    + offiAgg.weeklyArea.two[i],
+          three:  aptAgg.weeklyArea.three[i]  + rhAgg.weeklyArea.three[i]  + shAgg.weeklyArea.three[i]  + offiAgg.weeklyArea.three[i],
+        },
+        price: {
+          under3: rhAgg.weeklyPrice.under3[i] + shAgg.weeklyPrice.under3[i] + offiAgg.weeklyPrice.under3[i],
+          under6: rhAgg.weeklyPrice.under6[i] + shAgg.weeklyPrice.under6[i] + offiAgg.weeklyPrice.under6[i],
+          over6:  rhAgg.weeklyPrice.over6[i]  + shAgg.weeklyPrice.over6[i]  + offiAgg.weeklyPrice.over6[i],
+        },
       })),
     };
   }
 
   return {
+    schemaVersion: 2,
     generatedAt,
     source: 'rtms',
     periods: { week: weekPeriods, month: monthPeriods },
@@ -425,10 +533,11 @@ async function fetchOnePage(serviceKey, endpoint, lawdCd, dealYmd, pageNo) {
  * @returns {{ items: array, totalCount: number } | null}  null = 실패(계속 진행)
  */
 async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCache, stats) {
-  // 캐시 확인
+  // 캐시 확인: schemaVersion === 2 인 경우에만 유효한 캐시로 처리
+  // v1 캐시(날짜만 있고 area/amount 없음)는 자동 무효화 → 재수집
   if (useCache) {
     const cached = cacheLoad(lawdCd, dealYmd, propType);
-    if (cached !== null) {
+    if (cached !== null && cached.schemaVersion === 2) {
       stats.hits++;
       stats.hitsByType[propType]++;
       return cached;
@@ -542,13 +651,17 @@ const FIXTURE_XML_APT = `
   <body>
     <items>
       <!-- 강남구 아파트: 2026-06 3건, 2026-07(진행중) 1건 -->
-      <item><년>2026</년><월>6</월><일>10</일></item>
-      <item><년>2026</년><월>6</월><일>15</일></item>
-      <item><년>2026</년><월>6</월><일>29</일></item>
+      <!-- area: 35m²(studio), amount: 25000만원(under3) -->
+      <item><년>2026</년><월>6</월><일>10</일><전용면적>35</전용면적><거래금액>25,000</거래금액></item>
+      <!-- area: 50m²(two), amount: 45000만원(under6) -->
+      <item><년>2026</년><월>6</월><일>15</일><전용면적>50</전용면적><거래금액>  45,000</거래금액></item>
+      <!-- area: 80m²(three), amount: 82500만원(over6) -->
+      <item><년>2026</년><월>6</월><일>29</일><전용면적>80</전용면적><거래금액>82,500</거래금액></item>
+      <!-- area/amount 없음(null) — 건수엔 포함, 버킷엔 미반영 -->
       <item><년>2026</년><월>7</월><일>2</일></item>
       <!-- 2025-07 2건 -->
-      <item><년>2025</년><월>7</월><일>5</일></item>
-      <item><년>2025</년><월>7</월><일>20</일></item>
+      <item><년>2025</년><월>7</월><일>5</일><전용면적>40</전용면적><거래금액>30,000</거래금액></item>
+      <item><년>2025</년><월>7</월><일>20</일><전용면적>61</전용면적><거래금액>70,000</거래금액></item>
     </items>
     <totalCount>6</totalCount>
     <pageNo>1</pageNo>
@@ -565,8 +678,10 @@ const FIXTURE_XML_APT_EN = `
   <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
   <body>
     <items>
-      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>10</dealDay></item>
-      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>25</dealDay></item>
+      <!-- 영문 태그 area/amount 검증 -->
+      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>10</dealDay><excluUseAr>35.5</excluUseAr><dealAmount>82,500</dealAmount></item>
+      <item><dealYear>2026</dealYear><dealMonth>6</dealMonth><dealDay>25</dealDay><excluUseAr>55</excluUseAr><dealAmount>  45,000</dealAmount></item>
+      <!-- area/amount 태그 없음 → null -->
       <item><dealYear>2026</dealYear><dealMonth>6</dealMonth></item>
     </items>
     <totalCount>3</totalCount>
@@ -582,9 +697,11 @@ const FIXTURE_XML_RH = `
   <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
   <body>
     <items>
-      <!-- 강남구 연립: 2026-06 2건 -->
-      <item><년>2026</년><월>6</월><일>5</일></item>
-      <item><년>2026</년><월>6</월><일>22</일></item>
+      <!-- 강남구 연립: 2026-06 2건 (area/amount 포함) -->
+      <!-- area: 38m²(studio), amount: 20000만원(under3) -->
+      <item><년>2026</년><월>6</월><일>5</일><전용면적>38</전용면적><거래금액>20,000</거래금액></item>
+      <!-- area: 45m²(two), amount: 35000만원(under6) -->
+      <item><년>2026</년><월>6</월><일>22</일><전용면적>45</전용면적><거래금액>35,000</거래금액></item>
     </items>
     <totalCount>2</totalCount>
     <pageNo>1</pageNo>
@@ -599,8 +716,10 @@ const FIXTURE_XML_SH = `
   <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
   <body>
     <items>
-      <!-- 강남구 단독: 2026-06 1건, 일자 없는 항목 1건 (월 집계에만 반영) -->
-      <item><년>2026</년><월>6</월><일>18</일></item>
+      <!-- 강남구 단독: 2026-06 1건(area/amount 있음), 일자 없는 항목 1건 (월 집계에만 반영) -->
+      <!-- area: 70m²(three), amount: 65000만원(over6) -->
+      <item><년>2026</년><월>6</월><일>18</일><전용면적>70</전용면적><거래금액>65,000</거래금액></item>
+      <!-- area/amount 없음(null), 일자도 없음 — 월 건수만 반영 -->
       <item><년>2026</년><월>6</월></item>
     </items>
     <totalCount>2</totalCount>
@@ -678,9 +797,12 @@ const FIXTURE_XML_OFFI = `
   <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
   <body>
     <items>
-      <item><년>2026</년><월>6</월><일>8</일></item>
-      <item><년>2026</년><월>6</월><일>25</일></item>
-      <item><년>2025</년><월>7</월><일>12</일></item>
+      <!-- area: 30m²(studio), amount: 15000만원(under3) -->
+      <item><년>2026</년><월>6</월><일>8</일><전용면적>30</전용면적><거래금액>15,000</거래금액></item>
+      <!-- area: 55m²(two), amount: 50000만원(under6) -->
+      <item><년>2026</년><월>6</월><일>25</일><전용면적>55</전용면적><거래금액>50,000</거래금액></item>
+      <!-- area: 65m²(three), amount: 75000만원(over6) -->
+      <item><년>2025</년><월>7</월><일>12</일><전용면적>65</전용면적><거래금액>75,000</거래금액></item>
     </items>
     <totalCount>3</totalCount>
     <pageNo>1</pageNo>
@@ -755,9 +877,29 @@ function runSelfTest() {
   assert('첫 번째 item month=6',   aptItems[0].month === 6);
   assert('첫 번째 item day=10',    aptItems[0].day === 10);
 
+  // 한글 태그 area/amount 파싱 검증
+  assert('APT item[0] area=35 (한글 전용면적)', aptItems[0].area === 35,
+    `실제: ${aptItems[0].area}`);
+  assert('APT item[0] amount=25000 (콤마 제거)', aptItems[0].amount === 25000,
+    `실제: ${aptItems[0].amount}`);
+  assert('APT item[1] area=50 (two 버킷)', aptItems[1].area === 50,
+    `실제: ${aptItems[1].area}`);
+  assert('APT item[2] amount=82500 (over6)', aptItems[2].amount === 82500,
+    `실제: ${aptItems[2].amount}`);
+  // area/amount 없는 항목은 null
+  assert('APT item[3] area=null (태그 없음)', aptItems[3].area === null,
+    `실제: ${aptItems[3].area}`);
+  assert('APT item[3] amount=null (태그 없음)', aptItems[3].amount === null,
+    `실제: ${aptItems[3].amount}`);
+  // area 경계값: 40m² = studio(≤40)
+  assert('APT item[4] area=40 → studio 경계', aptItems[4].area === 40,
+    `실제: ${aptItems[4].area}`);
+
   const shItems = parseItems(FIXTURE_XML_SH);
   assert('SH 픽스처 2건 파싱', shItems.length === 2);
   assert('일자 없는 항목 day=null', shItems[1].day === null);
+  assert('SH 일자없는 항목 area=null', shItems[1].area === null,
+    `실제: ${shItems[1].area}`);
 
   // 영문 태그(라이브 API 주 경로) 검증
   const enItems = parseItems(FIXTURE_XML_APT_EN);
@@ -766,6 +908,19 @@ function runSelfTest() {
   assert('영문 item day=10', enItems[0].day === 10);
   assert('영문 dealDay 없는 항목 day=null', enItems[2].day === null);
   assert('영문 픽스처 totalCount=3', parseTotalCount(FIXTURE_XML_APT_EN) === 3);
+  // 영문 태그 excluUseAr / dealAmount 파싱 검증
+  assert('영문 item[0] area=35.5 (excluUseAr)', enItems[0].area === 35.5,
+    `실제: ${enItems[0].area}`);
+  assert('영문 item[0] amount=82500 (dealAmount 콤마 제거)', enItems[0].amount === 82500,
+    `실제: ${enItems[0].amount}`);
+  assert('영문 item[1] area=55 (two 버킷)', enItems[1].area === 55,
+    `실제: ${enItems[1].area}`);
+  assert('영문 item[1] amount=45000 (공백 포함 파싱)', enItems[1].amount === 45000,
+    `실제: ${enItems[1].amount}`);
+  assert('영문 item[2] area=null (태그 없음)', enItems[2].area === null,
+    `실제: ${enItems[2].area}`);
+  assert('영문 item[2] amount=null (태그 없음)', enItems[2].amount === null,
+    `실제: ${enItems[2].amount}`);
   let en000ok = true;
   try { checkResultCode(FIXTURE_XML_APT_EN); } catch { en000ok = false; }
   assert('영문 픽스처 resultCode=000 통과', en000ok);
@@ -804,6 +959,45 @@ function runSelfTest() {
     aptAgg.weekly[11] === 2,
     `실제: ${aptAgg.weekly[11]}`);
 
+  // aggregateItems 면적/금액 버킷 어서션
+  const jun26MIdx = periods.monthPeriods.indexOf('2026-06');
+  const jul25MIdx = periods.monthPeriods.indexOf('2025-07');
+
+  // 2026-06 아파트 면적 버킷: studio(35)=1, two(50)=1, three(80)=1
+  assert('aptAgg monthlyArea 2026-06 studio=1', aptAgg.monthlyArea.studio[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyArea.studio[jun26MIdx]}`);
+  assert('aptAgg monthlyArea 2026-06 two=1', aptAgg.monthlyArea.two[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyArea.two[jun26MIdx]}`);
+  assert('aptAgg monthlyArea 2026-06 three=1', aptAgg.monthlyArea.three[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyArea.three[jun26MIdx]}`);
+
+  // 2026-06 아파트 금액 버킷: under3(25000)=1, under6(45000)=1, over6(82500)=1
+  assert('aptAgg monthlyPrice 2026-06 under3=1', aptAgg.monthlyPrice.under3[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyPrice.under3[jun26MIdx]}`);
+  assert('aptAgg monthlyPrice 2026-06 under6=1', aptAgg.monthlyPrice.under6[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyPrice.under6[jun26MIdx]}`);
+  assert('aptAgg monthlyPrice 2026-06 over6=1', aptAgg.monthlyPrice.over6[jun26MIdx] === 1,
+    `실제: ${aptAgg.monthlyPrice.over6[jun26MIdx]}`);
+
+  // 2025-07 아파트: area=40(studio, 경계값), area=61(three), amount=30000(under3 경계), amount=70000(over6)
+  assert('aptAgg monthlyArea 2025-07 studio=1 (40m² 경계)', aptAgg.monthlyArea.studio[jul25MIdx] === 1,
+    `실제: ${aptAgg.monthlyArea.studio[jul25MIdx]}`);
+  assert('aptAgg monthlyArea 2025-07 three=1 (61m²)', aptAgg.monthlyArea.three[jul25MIdx] === 1,
+    `실제: ${aptAgg.monthlyArea.three[jul25MIdx]}`);
+  assert('aptAgg monthlyPrice 2025-07 under3=1 (30000만원 경계)', aptAgg.monthlyPrice.under3[jul25MIdx] === 1,
+    `실제: ${aptAgg.monthlyPrice.under3[jul25MIdx]}`);
+  assert('aptAgg monthlyPrice 2025-07 over6=1 (70000만원)', aptAgg.monthlyPrice.over6[jul25MIdx] === 1,
+    `실제: ${aptAgg.monthlyPrice.over6[jul25MIdx]}`);
+
+  // null area/amount 항목(2026-07-02 아파트)은 버킷에 미반영, 건수엔 반영되지 않음(진행중 월)
+  // → 진행중 월이므로 monthlyArea에도 반영 안됨(monthPeriods에 없음)
+  // 2026-06 studio+two+three 합이 건수 3보다 크지 않아야 함 (null 항목은 건수 제외)
+  const totalBucketed = aptAgg.monthlyArea.studio[jun26MIdx] +
+                        aptAgg.monthlyArea.two[jun26MIdx]    +
+                        aptAgg.monthlyArea.three[jun26MIdx];
+  assert('null area 항목은 버킷 합산에 미포함 (2026-06 버킷합=3 = 건수 3과 일치)',
+    totalBucketed === 3, `버킷합: ${totalBucketed}`);
+
   const shAgg = aggregateItems(shItems, periods.monthPeriods, periods.weekPeriods);
   assert('SH 월별[2026-06] = 2 (일자없는항목도 월 카운트)',
     shAgg.monthly[periods.monthPeriods.indexOf('2026-06')] === 2,
@@ -812,6 +1006,14 @@ function runSelfTest() {
   assert('SH 주별[2026-06-15주] = 1 (일자있는항목만)',
     weekIdx0618 >= 0 && shAgg.weekly[weekIdx0618] === 1,
     `weekIdx=${weekIdx0618}, 실제: ${weekIdx0618 >= 0 ? shAgg.weekly[weekIdx0618] : 'N/A'}`);
+
+  // SH 면적/금액 버킷: item[0] area=70(three), amount=65000(over6); item[1] area=null, amount=null
+  assert('shAgg monthlyArea 2026-06 three=1 (70m²)', shAgg.monthlyArea.three[jun26MIdx] === 1,
+    `실제: ${shAgg.monthlyArea.three[jun26MIdx]}`);
+  assert('shAgg monthlyArea 2026-06 studio=0 (null 미반영)', shAgg.monthlyArea.studio[jun26MIdx] === 0,
+    `실제: ${shAgg.monthlyArea.studio[jun26MIdx]}`);
+  assert('shAgg monthlyPrice 2026-06 over6=1 (65000만원)', shAgg.monthlyPrice.over6[jun26MIdx] === 1,
+    `실제: ${shAgg.monthlyPrice.over6[jun26MIdx]}`);
 
   // ── 4. buildNormalized 검증 (오피스텔 포함) ──────
   console.log('\n[4] buildNormalized 검증 (offi 포함)');
@@ -841,6 +1043,8 @@ function runSelfTest() {
     '2026-07-10'
   );
 
+  assert('schemaVersion = 2', normalized.schemaVersion === 2,
+    `실제: ${normalized.schemaVersion}`);
   assert('generatedAt = 2026-07-10', normalized.generatedAt === '2026-07-10');
   assert('source = rtms',            normalized.source === 'rtms');
   assert('periods.month 길이 = 12',  normalized.periods.month.length === 12);
@@ -857,6 +1061,38 @@ function runSelfTest() {
   assert('강남구 2026-06 nonApt = 6 (rh=2 + sh=2 + offi=2)',
     gangnamJun.nonApt === 6, `실제: ${gangnamJun.nonApt}`);
 
+  // room: apt+rh+sh+offi 전체 면적 합산 (2026-06)
+  // apt: studio=1(35m²), two=1(50m²), three=1(80m²)
+  // rh:  studio=1(38m²), two=1(45m²), three=0
+  // sh:  studio=0, two=0, three=1(70m²)
+  // offi:studio=1(30m²), two=1(55m²), three=0
+  // room.studio = 1+1+0+1 = 3, room.two = 1+1+0+1 = 3, room.three = 1+0+1+0 = 2
+  assert('강남구 2026-06 room.studio = 3 (apt+rh+sh+offi 합산)',
+    gangnamJun.room.studio === 3, `실제: ${gangnamJun.room.studio}`);
+  assert('강남구 2026-06 room.two = 3',
+    gangnamJun.room.two === 3, `실제: ${gangnamJun.room.two}`);
+  assert('강남구 2026-06 room.three = 2',
+    gangnamJun.room.three === 2, `실제: ${gangnamJun.room.three}`);
+
+  // price: 비아파트(rh+sh+offi)만 금액 합산 (2026-06)
+  // rh:  under3=1(20000), under6=1(35000), over6=0
+  // sh:  under3=0, under6=0, over6=1(65000)
+  // offi:under3=1(15000), under6=1(50000), over6=0
+  // price.under3 = 1+0+1 = 2, price.under6 = 1+0+1 = 2, price.over6 = 0+1+0 = 1
+  assert('강남구 2026-06 price.under3 = 2 (비아파트만)',
+    gangnamJun.price.under3 === 2, `실제: ${gangnamJun.price.under3}`);
+  assert('강남구 2026-06 price.under6 = 2 (비아파트만)',
+    gangnamJun.price.under6 === 2, `실제: ${gangnamJun.price.under6}`);
+  assert('강남구 2026-06 price.over6 = 1 (비아파트만, sh)',
+    gangnamJun.price.over6 === 1, `실제: ${gangnamJun.price.over6}`);
+
+  // room/price 필드 존재 확인
+  assert('month 엔트리에 room 필드 존재', gangnamJun.room !== undefined);
+  assert('month 엔트리에 price 필드 존재', gangnamJun.price !== undefined);
+  const gangnamJunWeek = normalized.byDistrict['강남구'].week[normalized.periods.week.indexOf('2026-06-29~2026-07-05')];
+  assert('week 엔트리에 room 필드 존재', gangnamJunWeek !== undefined && gangnamJunWeek.room !== undefined);
+  assert('week 엔트리에 price 필드 존재', gangnamJunWeek !== undefined && gangnamJunWeek.price !== undefined);
+
   // 2025-07: offi 1건 포함 → rh(0) + sh(0) + offi(1) = 1
   const jul25Idx   = normalized.periods.month.indexOf('2025-07');
   const gangnamJul = normalized.byDistrict['강남구'].month[jul25Idx];
@@ -864,6 +1100,16 @@ function runSelfTest() {
     gangnamJul.apt === 2, `실제: ${gangnamJul.apt}`);
   assert('강남구 2025-07 nonApt = 1 (offi만)',
     gangnamJul.nonApt === 1, `실제: ${gangnamJul.nonApt}`);
+  // 2025-07 room: apt(studio=1(40m²), three=1(61m²)) + offi(three=1(65m²))
+  assert('강남구 2025-07 room.studio = 1 (apt 40m²)', gangnamJul.room.studio === 1,
+    `실제: ${gangnamJul.room.studio}`);
+  assert('강남구 2025-07 room.three = 2 (apt 61m² + offi 65m²)', gangnamJul.room.three === 2,
+    `실제: ${gangnamJul.room.three}`);
+  // 2025-07 price(비아파트만): offi(over6=1(75000))
+  assert('강남구 2025-07 price.over6 = 1 (offi 75000만원)', gangnamJul.price.over6 === 1,
+    `실제: ${gangnamJul.price.over6}`);
+  assert('강남구 2025-07 price.under3 = 0 (비아파트 없음)', gangnamJul.price.under3 === 0,
+    `실제: ${gangnamJul.price.under3}`);
 
   const jongnoJun = normalized.byDistrict['종로구'].month[jun26Idx];
   assert('종로구 2026-06 apt = 1',
@@ -882,6 +1128,11 @@ function runSelfTest() {
   const gangnamJunNoOffi = normalizedNoOffi.byDistrict['강남구'].month[jun26Idx];
   assert('offi 없을 때 nonApt = 4 (rh=2 + sh=2 + offi=0)',
     gangnamJunNoOffi.nonApt === 4, `실제: ${gangnamJunNoOffi.nonApt}`);
+  assert('offi 없을 때 schemaVersion = 2', normalizedNoOffi.schemaVersion === 2,
+    `실제: ${normalizedNoOffi.schemaVersion}`);
+  // offi 없을 때 room은 apt+rh+sh만 합산 (studio: apt=1, rh=1, sh=0 = 2)
+  assert('offi 없을 때 room.studio = 2 (apt=1+rh=1)', gangnamJunNoOffi.room.studio === 2,
+    `실제: ${gangnamJunNoOffi.room.studio}`);
 
   // ── 4c. offi 인증 오류는 non-fatal ───────────────
   console.log('\n[4c] 오피스텔 인증 오류 non-fatal 검증');
