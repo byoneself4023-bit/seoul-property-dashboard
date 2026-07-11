@@ -92,6 +92,16 @@
 </section>
 
 <!-- ─────────────────────────────────────────────
+  4-B. 구별 거래량 바 차트 (현재 기간, 전체 25구)
+───────────────────────────────────────────── -->
+<section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+  <p class="text-xs font-semibold text-slate-700 mb-2">구별 거래량 (현재 기간) <span class="text-slate-400 font-normal">· 바 클릭 → 구 선택 · 카토그램(공간) + 막대(수량) 상호 보완</span></p>
+  <div style="position:relative;height:200px;max-height:200px;">
+    <canvas id="barChart"></canvas>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────
   5. 선택 구 분석: 3모드 차트 + 분석 코멘터리
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
@@ -9120,31 +9130,62 @@ function renderDistrictChart() {
   districtChartInst = new Chart(ctx, { type, data, options });
 }
 
-// D. 분석 코멘터리 (실수치 기반)
+// D. 분석 코멘터리 (팩트 전용 — 해석/예측 금지)
 function renderCommentary() {
-  const periodKey = periods[periodIndex];
-  const rows      = dataProvider.getDistrictTotals(granularity, periodKey);
-  const row       = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
-  const total     = row.apt + row.nonApt;
-  const nonAptPct = total > 0 ? ((row.nonApt / total) * 100).toFixed(1) : '0.0';
+  const periodKey     = periods[periodIndex];
+  const prevPeriodKey = periodIndex > 0 ? periods[periodIndex - 1] : null;
+  const granWord      = granularity === 'week' ? '주' : '달';
+  const prevWord      = granularity === 'week' ? '전주' : '전월';
+
+  // 서울 전체 집계
+  const seoulCurr = dataProvider.getSeoulTotals(granularity, periodKey);
+  const seoulPrev = prevPeriodKey ? dataProvider.getSeoulTotals(granularity, prevPeriodKey) : null;
+
+  // 전기 대비 아파트 변화율 (periodIndex > 0 일 때만)
+  let deltaClause = '';
+  if (seoulPrev) {
+    const pct = deltaPct(seoulCurr.apt, seoulPrev.apt);
+    if (pct !== null) {
+      const sign = pct > 0 ? '+' : '';
+      deltaClause = `, ${prevWord} 대비 아파트 ${sign}${pct}%`;
+    }
+  }
+
+  // 이번 기간 거래량 최다 구
+  const rows = dataProvider.getDistrictTotals(granularity, periodKey);
+  const topRow = [...rows].sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt))[0];
+  const topCount = topRow ? (topRow.apt + topRow.nonApt) : 0;
+
+  // 선택 구 데이터
+  const distRow = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
+  const distTotal = distRow.apt + distRow.nonApt;
+  const nonAptPct = distTotal > 0 ? ((distRow.nonApt / distTotal) * 100).toFixed(1) : '0.0';
 
   const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
 
-  // 지배적 공간규격
+  // 최다 공간규격
   const roomEntries = [['원룸형', bd.room.studio], ['투룸형', bd.room.two], ['쓰리룸+', bd.room.three]];
   roomEntries.sort((a, b) => b[1] - a[1]);
-  const domRoom = roomEntries[0][0];
+  const topRoom = roomEntries[0][0];
 
-  // 지배적 금액대
+  // 비아파트 최다 금액대
   const priceEntries = [['3억 이하', bd.price.under3], ['3~6억', bd.price.under6], ['6억 초과', bd.price.over6]];
   priceEntries.sort((a, b) => b[1] - a[1]);
-  const domPrice = priceEntries[0][0];
+  const topPrice = priceEntries[0][0];
 
-  const eun  = josa(selectedDistrict, '은/는');
-  document.getElementById('commentary').textContent =
-    `${selectedDistrict}${eun} 현재 기간 아파트 ${row.apt.toLocaleString()}건, ` +
-    `비아파트 ${row.nonApt.toLocaleString()}건(비아파트 비율 ${nonAptPct}%)을 기록했습니다. ` +
-    `비아파트 거래는 ${domRoom} 공간 규격이 가장 많았고, 가격대는 ${domPrice} 구간이 우세했습니다.`;
+  const eun = josa(selectedDistrict, '은/는');
+
+  let text =
+    `이번 ${granWord} 서울 아파트 거래 ${seoulCurr.apt.toLocaleString()}건, 비아파트 ${seoulCurr.nonApt.toLocaleString()}건${deltaClause}. ` +
+    `최다 거래 구: ${topRow ? topRow.district : '—'}(${topCount.toLocaleString()}건). ` +
+    `${selectedDistrict}${eun} 아파트 ${distRow.apt.toLocaleString()}건 · 비아파트 ${distRow.nonApt.toLocaleString()}건 (비아파트 ${nonAptPct}%). ` +
+    `최다 공간규격 ${topRoom}, 비아파트 최다 금액대 ${topPrice}.`;
+
+  if (periodIndex === periods.length - 1) {
+    text += ' ※ 최신 기간은 신고 진행 중이라 확정치가 아닙니다.';
+  }
+
+  document.getElementById('commentary').textContent = text;
 }
 
 // 기간 네비게이션 + 슬라이더 동기화
@@ -9159,9 +9200,83 @@ function renderNavigation() {
   slider.value = String(periodIndex);
 }
 
+// E. 전체 25구 바 차트 (현재 기간, 별도 인스턴스)
+let barChartInst = null;
+
+function renderBarChart() {
+  const periodKey = periods[periodIndex];
+  const rows = dataProvider.getDistrictTotals(granularity, periodKey);
+  rows.sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+
+  const labels    = rows.map(r => r.district.replace('구', ''));
+  const fullNames = rows.map(r => r.district); // 클릭용 원본
+  const aptVals   = rows.map(r => r.apt);
+  const nonAptVals = rows.map(r => r.nonApt);
+
+  // 선택 구 강조: 테두리 두께로 표시
+  const selIdx = fullNames.indexOf(selectedDistrict);
+
+  const config = {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '아파트',
+          data: aptVals,
+          backgroundColor: aptVals.map((_, i) => i === selIdx ? 'rgba(79,70,229,0.95)' : 'rgba(99,102,241,0.65)'),
+          borderColor:     aptVals.map((_, i) => i === selIdx ? 'rgb(55,48,163)' : 'transparent'),
+          borderWidth: aptVals.map((_, i) => i === selIdx ? 2 : 0),
+          borderRadius: 2
+        },
+        {
+          label: '비아파트',
+          data: nonAptVals,
+          backgroundColor: nonAptVals.map((_, i) => i === selIdx ? 'rgba(100,116,139,0.95)' : 'rgba(148,163,184,0.60)'),
+          borderColor:     nonAptVals.map((_, i) => i === selIdx ? 'rgb(71,85,105)' : 'transparent'),
+          borderWidth: nonAptVals.map((_, i) => i === selIdx ? 2 : 0),
+          borderRadius: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#475569', font: { size: 10 } } },
+        tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
+      },
+      scales: {
+        x: { stacked: false, ticks: { color: '#64748b', font: { size: 8 } }, grid: { color: '#f1f5f9' } },
+        y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#e2e8f0' } }
+      },
+      onClick(evt, elements) {
+        if (!elements.length) return;
+        selectDistrict(fullNames[elements[0].index]);
+      }
+    }
+  };
+
+  if (barChartInst) {
+    barChartInst.data.labels = labels;
+    barChartInst.data.datasets[0].data = aptVals;
+    barChartInst.data.datasets[0].backgroundColor = config.data.datasets[0].backgroundColor;
+    barChartInst.data.datasets[0].borderColor = config.data.datasets[0].borderColor;
+    barChartInst.data.datasets[0].borderWidth = config.data.datasets[0].borderWidth;
+    barChartInst.data.datasets[1].data = nonAptVals;
+    barChartInst.data.datasets[1].backgroundColor = config.data.datasets[1].backgroundColor;
+    barChartInst.data.datasets[1].borderColor = config.data.datasets[1].borderColor;
+    barChartInst.data.datasets[1].borderWidth = config.data.datasets[1].borderWidth;
+    barChartInst.update();
+  } else {
+    barChartInst = new Chart(document.getElementById('barChart'), config);
+  }
+}
+
 function renderAll() {
   renderKPI();
   renderCartogram();
+  renderBarChart();
   renderDistrictChart();
   renderCommentary();
   renderNavigation();
@@ -9207,7 +9322,8 @@ function toggleAutoplay() {
     btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
     btn.setAttribute('aria-pressed', 'true');
     autoplayTimer = setInterval(() => {
-      periodIndex = (periodIndex + 1) % periods.length;
+      if (periodIndex >= periods.length - 1) { stopAutoplay(); return; }
+      periodIndex += 1;
       renderAll();
     }, 1500);
   }
