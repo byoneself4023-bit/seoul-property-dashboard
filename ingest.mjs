@@ -45,6 +45,8 @@ const CACHE_DIR = join(__dirname, '.cache', 'ingest');
 const AREA_BUCKETS = { studioMax: 40, twoMax: 60 };
 // 금액대 버킷 경계 (거래금액 만원) — 3억↓ ≤30000 / 3~6억 30000<x≤60000 / 6억↑ >60000
 const PRICE_BUCKETS = { under3Max: 30000, under6Max: 60000 };
+// 월간 집계 시작 (YYYYMM) — 연도 탐색을 위해 2022-01부터 수집
+const START_YM = '202201';
 
 // ════════════════════════════════════════════════
 //  25개 서울 자치구 법정동코드
@@ -96,10 +98,12 @@ const ENDPOINTS = {
 
 /**
  * runDate 기준으로 수집 범위를 계산한다.
+ * monthPeriods는 START_YM(2022-01)부터 직전 완료월까지 가변 길이 목록이다.
+ * weekPeriods는 항상 완료된 최근 12주로 고정된다.
  * @param {Date} runDate
  * @returns {{
- *   dealYmdList: string[],       // 요청할 YYYYMM 목록 (당월 포함 13개)
- *   monthPeriods: string[],      // 완료된 12개월 키 ["YYYY-MM", ...] 오래된순
+ *   dealYmdList: string[],       // 요청할 YYYYMM 목록 (START_YM~당월, monthPeriods.length+1개)
+ *   monthPeriods: string[],      // START_YM 이후 완료된 모든 월 키 ["YYYY-MM", ...] 오래된순
  *   weekPeriods:  string[],      // 완료된 12주 키 ["YYYY-MM-DD~YYYY-MM-DD", ...] 오래된순
  *   currentYM:    string,        // 진행 중인 당월 "YYYYMM"
  *   currentWeekMon: string,      // 진행 중인 이번 주 월요일 "YYYY-MM-DD"
@@ -110,16 +114,30 @@ export function buildPeriods(runDate) {
   const month = runDate.getMonth(); // 0-based
 
   // ── 월 기간 ────────────────────────────────────
-  // 완료된 최근 12개월 (당월 제외)
+  // START_YM(2022-01)부터 직전 완료월까지 모든 월을 오래된순으로 수집
+  const startYear  = parseInt(START_YM.slice(0, 4), 10);
+  const startMonth = parseInt(START_YM.slice(4, 6), 10) - 1; // 0-based
+
   const monthPeriods = [];
-  for (let i = 12; i >= 1; i--) {
-    const d = new Date(year, month - i, 1);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
+  // cur = START_YM 부터 시작, 직전 완료월(month-1, 0-based)까지 순회
+  let curYear  = startYear;
+  let curMonth = startMonth; // 0-based
+  // 직전 완료월: runDate의 month(0-based)가 0이면 전년 12월, 아니면 month-1
+  const lastCompYear  = month === 0 ? year - 1 : year;
+  const lastCompMonth = month === 0 ? 11 : month - 1; // 0-based
+  while (
+    curYear < lastCompYear ||
+    (curYear === lastCompYear && curMonth <= lastCompMonth)
+  ) {
+    const y = String(curYear);
+    const m = String(curMonth + 1).padStart(2, '0');
     monthPeriods.push(`${y}-${m}`);
+    // 다음 달
+    curMonth++;
+    if (curMonth > 11) { curMonth = 0; curYear++; }
   }
 
-  // 요청할 DEAL_YMD: 완료 12개월 + 당월 = 13개
+  // 요청할 DEAL_YMD: START_YM 이후 완료월 전부 + 당월
   const currentYM = `${year}${String(month + 1).padStart(2, '0')}`;
   const dealYmdList = [
     ...monthPeriods.map(p => p.replace('-', '')),
@@ -853,14 +871,26 @@ function runSelfTest() {
   const runDate = new Date('2026-07-10'); // 금요일
   const periods = buildPeriods(runDate);
 
-  assert('monthPeriods 길이 = 12', periods.monthPeriods.length === 12);
+  // runDate=2026-07-10: START_YM=2022-01 → 마지막 완료월=2026-06
+  // monthPeriods = 2022-01 ~ 2026-06 = 54개월
+  // (2026-2022)*12 + (6-1+1) = 48+6 = 54
+  // dealYmdList  = 54 + 1(당월) = 55개
+  const EXPECTED_MONTH_LEN = 54; // 2022-01 ~ 2026-06 포함 54개월
+  assert(`monthPeriods 길이 = ${EXPECTED_MONTH_LEN} (2022-01~2026-06)`,
+    periods.monthPeriods.length === EXPECTED_MONTH_LEN,
+    `실제: ${periods.monthPeriods.length}`);
   assert('weekPeriods 길이 = 12',  periods.weekPeriods.length  === 12);
-  assert('dealYmdList 길이 = 13',  periods.dealYmdList.length  === 13);
+  assert(`dealYmdList 길이 = ${EXPECTED_MONTH_LEN + 1}`,
+    periods.dealYmdList.length === EXPECTED_MONTH_LEN + 1,
+    `실제: ${periods.dealYmdList.length}`);
   assert('currentYM = 202607',     periods.currentYM === '202607');
   // 2026-07-10은 금요일(day=5) → 월요일은 2026-07-06
   assert('currentWeekMon = 2026-07-06', periods.currentWeekMon === '2026-07-06');
-  assert('monthPeriods[11] = 2026-06',  periods.monthPeriods[11] === '2026-06');
-  assert('monthPeriods[0] = 2025-07',   periods.monthPeriods[0]  === '2025-07');
+  assert(`monthPeriods[${EXPECTED_MONTH_LEN-1}] = 2026-06`,
+    periods.monthPeriods[EXPECTED_MONTH_LEN - 1] === '2026-06',
+    `실제: ${periods.monthPeriods[EXPECTED_MONTH_LEN - 1]}`);
+  assert('monthPeriods[0] = 2022-01', periods.monthPeriods[0] === '2022-01',
+    `실제: ${periods.monthPeriods[0]}`);
   assert('weekPeriods[11] = 2026-06-29~2026-07-05',
     periods.weekPeriods[11] === '2026-06-29~2026-07-05');
   // 최근 2개월(신고 지연 → 캐시 무시 대상) = 직전월 + 당월
@@ -1047,10 +1077,14 @@ function runSelfTest() {
     `실제: ${normalized.schemaVersion}`);
   assert('generatedAt = 2026-07-10', normalized.generatedAt === '2026-07-10');
   assert('source = rtms',            normalized.source === 'rtms');
-  assert('periods.month 길이 = 12',  normalized.periods.month.length === 12);
+  assert(`periods.month 길이 = ${EXPECTED_MONTH_LEN}`,
+    normalized.periods.month.length === EXPECTED_MONTH_LEN,
+    `실제: ${normalized.periods.month.length}`);
   assert('periods.week 길이 = 12',   normalized.periods.week.length === 12);
   assert('byDistrict.강남구 존재',   '강남구' in normalized.byDistrict);
-  assert('강남구.month 길이 = 12',   normalized.byDistrict['강남구'].month.length === 12);
+  assert(`강남구.month 길이 = ${EXPECTED_MONTH_LEN}`,
+    normalized.byDistrict['강남구'].month.length === EXPECTED_MONTH_LEN,
+    `실제: ${normalized.byDistrict['강남구'].month.length}`);
   assert('강남구.week 길이 = 12',    normalized.byDistrict['강남구'].week.length === 12);
 
   const jun26Idx   = normalized.periods.month.indexOf('2026-06');
