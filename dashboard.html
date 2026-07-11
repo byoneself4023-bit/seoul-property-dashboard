@@ -55,21 +55,22 @@
   3. 타임라인 슬라이더 + 자동재생
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-  <div class="flex items-center gap-3 mb-3">
-    <button id="btnPrev" onclick="navigate(-1)"
-      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
+  <div class="flex flex-wrap items-center gap-2">
+    <button id="btnPrev" onclick="navigate(-1)" aria-label="이전 기간"
+      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
       &#8592; 이전
     </button>
-    <span id="periodLabel" class="text-sm font-bold text-indigo-600 min-w-36 text-center">—</span>
-    <button id="btnNext" onclick="navigate(+1)"
-      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
+    <span id="periodLabel" aria-live="polite" class="text-sm font-bold text-indigo-600 min-w-36 text-center">—</span>
+    <button id="btnNext" onclick="navigate(+1)" aria-label="다음 기간"
+      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
       다음 &#8594;
     </button>
     <input type="range" id="timeSlider" min="0" max="11" value="11"
-      class="flex-1 h-2 accent-indigo-600 cursor-pointer">
-    <button id="playBtn" onclick="toggleAutoplay()"
-      class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors">
-      <span id="playIcon">&#9654;</span>
+      aria-label="기간 선택"
+      class="flex-1 min-w-24 h-2 accent-indigo-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded">
+    <button id="playBtn" onclick="toggleAutoplay()" aria-pressed="false"
+      class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors">
+      <span id="playIcon" aria-hidden="true">&#9654;</span>
       <span id="playText">재생</span>
     </button>
   </div>
@@ -79,38 +80,39 @@
   4. 격자형 카토그램 지도
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-  <div class="flex items-center justify-between mb-3">
-    <p class="text-xs font-semibold text-slate-700">서울시 거래 활성도 지형도 <span class="text-slate-400 font-normal">(셀 클릭 → 구 선택)</span></p>
-    <div class="flex gap-3 text-xs">
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600"></span><span class="text-slate-600">상위</span></span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200"></span><span class="text-slate-600">중위</span></span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-100 border border-slate-200"></span><span class="text-slate-600">하위</span></span>
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <p class="text-xs font-semibold text-slate-700">서울시 거래 활성도 지형도 <span class="text-slate-400 font-normal">(셀 클릭 또는 Enter/Space → 구 선택)</span></p>
+    <div class="flex gap-3 text-xs" aria-label="색상 범례">
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600" aria-hidden="true"></span><span class="text-slate-600">상위 8구</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200" aria-hidden="true"></span><span class="text-slate-600">중위</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-100 border border-slate-200" aria-hidden="true"></span><span class="text-slate-600">하위</span></span>
     </div>
   </div>
-  <div class="grid gap-1.5" id="cartogramMap" style="grid-template-columns: repeat(8, 1fr);"></div>
+  <div class="grid gap-1.5" id="cartogramMap" role="group" aria-label="서울시 25개구 카토그램" style="grid-template-columns: repeat(8, 1fr);"></div>
 </section>
 
 <!-- ─────────────────────────────────────────────
   5. 선택 구 분석: 3모드 차트 + 분석 코멘터리
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-  <div class="flex items-center justify-between mb-3">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <p class="text-sm font-bold text-slate-800">분석: <span id="chartDistrictTitle" class="text-indigo-600">—</span></p>
-    <div class="flex gap-1">
-      <button id="chartTab-trend" onclick="switchChartMode('trend')"
-        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors">거래추이</button>
-      <button id="chartTab-room" onclick="switchChartMode('room')"
-        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">공간규격별</button>
-      <button id="chartTab-price" onclick="switchChartMode('price')"
-        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">금액대별</button>
+    <div class="flex gap-1" role="tablist" aria-label="차트 모드 선택">
+      <button id="chartTab-trend" role="tab" aria-selected="true" onclick="switchChartMode('trend')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400">거래추이</button>
+      <button id="chartTab-room" role="tab" aria-selected="false" onclick="switchChartMode('room')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400">공간규격별</button>
+      <button id="chartTab-price" role="tab" aria-selected="false" onclick="switchChartMode('price')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400">금액대별</button>
     </div>
   </div>
-  <div class="h-52">
+  <!-- 차트 컨테이너: 3모드 모두 동일 높이 (320px), overflow 방지 -->
+  <div style="position:relative;height:320px;max-height:320px;">
     <canvas id="districtChart"></canvas>
   </div>
   <!-- 분석 코멘터리 -->
   <div class="mt-3 pt-3 border-t border-slate-100">
-    <p class="text-xs text-slate-600 leading-relaxed" id="commentary">—</p>
+    <p class="text-xs text-slate-600 leading-relaxed" id="commentary" aria-live="polite">—</p>
   </div>
 </section>
 
@@ -8938,6 +8940,21 @@ const cartogramLayout = [
 ];
 
 // ════════════════════════════════════════════════
+//  한국어 조사 헬퍼
+//  받침 여부: (코드포인트 - 0xAC00) % 28 !== 0 이면 받침 있음
+// ════════════════════════════════════════════════
+function hasBatchim(word) {
+  const code = word.charCodeAt(word.length - 1);
+  if (code < 0xAC00 || code > 0xD7A3) return false; // 한글 범위 밖
+  return (code - 0xAC00) % 28 !== 0;
+}
+// josa('강남구', '은/는') → '는'  /  josa('강동구', '이/가') → '가'
+function josa(word, pair) {
+  const [withBatchim, withoutBatchim] = pair.split('/');
+  return hasBatchim(word) ? withBatchim : withoutBatchim;
+}
+
+// ════════════════════════════════════════════════
 //  헬퍼
 // ════════════════════════════════════════════════
 function formatPeriodLabel(key, gran) {
@@ -9024,6 +9041,7 @@ function renderCartogram() {
       const div = document.createElement('div');
       if (!cell) {
         div.className = 'h-12';
+        div.setAttribute('aria-hidden', 'true');
       } else {
         const total = totalsMap[cell] || 0;
         const isSelected = cell === selectedDistrict;
@@ -9031,9 +9049,14 @@ function renderCartogram() {
         if (total >= highThreshold) bg = 'bg-indigo-600 text-white border-indigo-500';
         else if (total >= midThreshold) bg = 'bg-indigo-200 text-indigo-900 border-indigo-300';
         const ring = isSelected ? ' ring-2 ring-amber-400 ring-offset-1' : '';
-        div.className = `h-12 rounded-lg border flex flex-col justify-center items-center cursor-pointer transition-colors hover:opacity-80 ${bg}${ring} p-0.5`;
-        div.innerHTML = `<span class="text-[10px] font-bold leading-tight">${cell.replace('구','')}</span><span class="text-[9px] leading-tight">${total}건</span>`;
+        div.className = `h-12 rounded-lg border flex flex-col justify-center items-center cursor-pointer transition-colors hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 ${bg}${ring} p-0.5`;
+        div.setAttribute('role', 'button');
+        div.setAttribute('tabindex', '0');
+        div.setAttribute('aria-label', `${cell} ${total}건${isSelected ? ' (선택됨)' : ''}`);
+        div.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        div.innerHTML = `<span class="text-[10px] font-bold leading-tight" aria-hidden="true">${cell.replace('구','')}</span><span class="text-[9px] leading-tight" aria-hidden="true">${total}건</span>`;
         div.onclick = () => selectDistrict(cell);
+        div.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(cell); } };
       }
       map.appendChild(div);
     });
@@ -9117,8 +9140,9 @@ function renderCommentary() {
   priceEntries.sort((a, b) => b[1] - a[1]);
   const domPrice = priceEntries[0][0];
 
+  const eun  = josa(selectedDistrict, '은/는');
   document.getElementById('commentary').textContent =
-    `${selectedDistrict}은 현재 기간 아파트 ${row.apt.toLocaleString()}건, ` +
+    `${selectedDistrict}${eun} 현재 기간 아파트 ${row.apt.toLocaleString()}건, ` +
     `비아파트 ${row.nonApt.toLocaleString()}건(비아파트 비율 ${nonAptPct}%)을 기록했습니다. ` +
     `비아파트 거래는 ${domRoom} 공간 규격이 가장 많았고, 가격대는 ${domPrice} 구간이 우세했습니다.`;
 }
@@ -9150,11 +9174,11 @@ function switchChartMode(mode) {
   chartMode = mode;
   ['trend','room','price'].forEach(m => {
     const btn = document.getElementById(`chartTab-${m}`);
-    if (m === mode) {
-      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors';
-    } else {
-      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors';
-    }
+    const active = m === mode;
+    btn.className = active
+      ? 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400'
+      : 'px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400';
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
   renderDistrictChart();
 }
@@ -9167,8 +9191,9 @@ function stopAutoplay() {
   isPlaying = false;
   document.getElementById('playIcon').textContent = '▶';
   document.getElementById('playText').textContent = '재생';
-  document.getElementById('playBtn').className =
-    'flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors';
+  const btn = document.getElementById('playBtn');
+  btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors';
+  btn.setAttribute('aria-pressed', 'false');
 }
 
 function toggleAutoplay() {
@@ -9178,8 +9203,9 @@ function toggleAutoplay() {
     isPlaying = true;
     document.getElementById('playIcon').textContent = '⏸';
     document.getElementById('playText').textContent = '정지';
-    document.getElementById('playBtn').className =
-      'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
+    const btn = document.getElementById('playBtn');
+    btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
+    btn.setAttribute('aria-pressed', 'true');
     autoplayTimer = setInterval(() => {
       periodIndex = (periodIndex + 1) % periods.length;
       renderAll();
