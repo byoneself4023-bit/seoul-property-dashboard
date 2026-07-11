@@ -30,8 +30,14 @@
 </header>
 
 <!-- ─────────────────────────────────────────────
-  2. KPI 카드 (선택 구 기준)
+  2. KPI 카드 (선택 구 or 서울 전체)
 ───────────────────────────────────────────── -->
+<div class="max-w-6xl mx-auto mb-1 flex items-center gap-2">
+  <span class="text-xs text-slate-500">선택:</span>
+  <button id="btnSeoulAll" onclick="selectDistrict(null)"
+    class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-600 bg-white border-slate-300 hover:bg-slate-100"
+    aria-pressed="false" aria-label="서울 전체 보기">서울 전체</button>
+</div>
 <section class="max-w-6xl mx-auto mb-4 grid grid-cols-2 gap-3">
   <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
     <p class="text-slate-500 text-xs mb-1"><span id="kpiDistrictLabel">—</span> 아파트 거래</p>
@@ -92,18 +98,28 @@
 </section>
 
 <!-- ─────────────────────────────────────────────
-  4. 격자형 카토그램 지도
+  4. 격자형 카토그램 지도 + Top 5 랭킹
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <p class="text-xs font-semibold text-slate-700">서울시 거래 활성도 지형도 <span class="text-slate-400 font-normal">(셀 클릭 또는 Enter/Space → 구 선택)</span></p>
     <div class="flex gap-3 text-xs" aria-label="색상 범례">
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600" aria-hidden="true"></span><span class="text-slate-600">상위 8구</span></span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200" aria-hidden="true"></span><span class="text-slate-600">중위</span></span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-100 border border-slate-200" aria-hidden="true"></span><span class="text-slate-600">하위</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600" aria-hidden="true"></span><span id="legendHigh" class="text-slate-600">상위 8구</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200" aria-hidden="true"></span><span id="legendMid" class="text-slate-600">중위</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-100 border border-slate-200" aria-hidden="true"></span><span id="legendLow" class="text-slate-600">하위</span></span>
     </div>
   </div>
-  <div class="grid gap-1.5" id="cartogramMap" role="group" aria-label="서울시 25개구 카토그램" style="grid-template-columns: repeat(8, 1fr);"></div>
+  <!-- 카토그램 + Top5 나란히 배치 -->
+  <div class="flex flex-wrap gap-4">
+    <div class="flex-1 min-w-0">
+      <div class="grid gap-1.5" id="cartogramMap" role="group" aria-label="서울시 25개구 카토그램" style="grid-template-columns: repeat(8, 1fr);"></div>
+    </div>
+    <!-- Top 5 랭킹 리스트 -->
+    <div class="w-44 shrink-0">
+      <p class="text-xs font-semibold text-slate-700 mb-2">이번 기간 상위 5개 구</p>
+      <ol id="top5List" class="flex flex-col gap-1" aria-label="거래량 상위 5개 구 랭킹"></ol>
+    </div>
+  </div>
 </section>
 
 <!-- ─────────────────────────────────────────────
@@ -23660,6 +23676,24 @@ const dataProvider = (() => {
       );
     },
 
+    /** 서울 전체 공간규격·금액대 합계 (25개구 합산) */
+    getSeoulBreakdown(granularity, periodKey) {
+      const acc = {
+        room:  { studio: 0, two: 0, three: 0 },
+        price: { under3: 0, under6: 0, over6: 0 }
+      };
+      DISTRICTS.forEach(d => {
+        const bd = this.getDistrictBreakdown(granularity, d, periodKey);
+        acc.room.studio += bd.room.studio;
+        acc.room.two    += bd.room.two;
+        acc.room.three  += bd.room.three;
+        acc.price.under3 += bd.price.under3;
+        acc.price.under6 += bd.price.under6;
+        acc.price.over6  += bd.price.over6;
+      });
+      return acc;
+    },
+
     /** 특정 구·기간의 공간규격·금액대 분류 {room:{studio,two,three}, price:{under3,under6,over6}} */
     getDistrictBreakdown(granularity, district, periodKey) {
       const periods = DATA.periods[granularity];
@@ -23780,30 +23814,56 @@ function periodShortLabel(key, gran) {
 //  렌더링
 // ════════════════════════════════════════════════
 
-// A. KPI 카드 — 선택 구 기준
+// A. KPI 카드 — 선택 구 기준 또는 서울 전체 (selectedDistrict === null)
 function renderKPI() {
   const periodKey     = periods[periodIndex];
   const prevPeriodKey = periodIndex > 0 ? periods[periodIndex - 1] : null;
 
-  const rows     = dataProvider.getDistrictTotals(granularity, periodKey);
-  const distRow  = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
-
-  let prevApt = null, prevNonApt = null;
-  if (prevPeriodKey) {
-    const prevRows = dataProvider.getDistrictTotals(granularity, prevPeriodKey);
-    const prevRow  = prevRows.find(r => r.district === selectedDistrict);
-    if (prevRow) { prevApt = prevRow.apt; prevNonApt = prevRow.nonApt; }
+  // 서울 전체 버튼 강조 동기화
+  const seoulBtn = document.getElementById('btnSeoulAll');
+  if (seoulBtn) {
+    const isSeoul = selectedDistrict === null;
+    seoulBtn.className = isSeoul
+      ? 'px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-600 text-white border-indigo-600'
+      : 'px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-600 bg-white border-slate-300 hover:bg-slate-100';
+    seoulBtn.setAttribute('aria-pressed', isSeoul ? 'true' : 'false');
   }
 
-  document.getElementById('kpiDistrictLabel').textContent  = selectedDistrict;
-  document.getElementById('kpiDistrictLabel2').textContent = selectedDistrict;
-  document.getElementById('kpiApt').textContent            = distRow.apt.toLocaleString();
-  document.getElementById('kpiNon').textContent            = distRow.nonApt.toLocaleString();
-  renderDelta('kpiAptDelta', distRow.apt,    prevApt);
-  renderDelta('kpiNonDelta', distRow.nonApt, prevNonApt);
+  let apt, nonApt, prevApt = null, prevNonApt = null, labelText;
+
+  if (selectedDistrict === null) {
+    // 서울 전체 집계
+    const curr = dataProvider.getSeoulTotals(granularity, periodKey);
+    apt    = curr.apt;
+    nonApt = curr.nonApt;
+    labelText = '서울 전체';
+    if (prevPeriodKey) {
+      const prev = dataProvider.getSeoulTotals(granularity, prevPeriodKey);
+      prevApt    = prev.apt;
+      prevNonApt = prev.nonApt;
+    }
+  } else {
+    const rows    = dataProvider.getDistrictTotals(granularity, periodKey);
+    const distRow = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
+    apt    = distRow.apt;
+    nonApt = distRow.nonApt;
+    labelText = selectedDistrict;
+    if (prevPeriodKey) {
+      const prevRows = dataProvider.getDistrictTotals(granularity, prevPeriodKey);
+      const prevRow  = prevRows.find(r => r.district === selectedDistrict);
+      if (prevRow) { prevApt = prevRow.apt; prevNonApt = prevRow.nonApt; }
+    }
+  }
+
+  document.getElementById('kpiDistrictLabel').textContent  = labelText;
+  document.getElementById('kpiDistrictLabel2').textContent = labelText;
+  document.getElementById('kpiApt').textContent            = apt.toLocaleString();
+  document.getElementById('kpiNon').textContent            = nonApt.toLocaleString();
+  renderDelta('kpiAptDelta', apt,    prevApt);
+  renderDelta('kpiNonDelta', nonApt, prevNonApt);
 }
 
-// B. 카토그램
+// B. 카토그램 + 범례 동적 업데이트 + 순위 배지
 function renderCartogram() {
   const map       = document.getElementById('cartogramMap');
   const periodKey = periods[periodIndex];
@@ -23816,6 +23876,18 @@ function renderCartogram() {
   const totalsMap = {};
   rows.forEach(r => { totalsMap[r.district] = r.apt + r.nonApt; });
 
+  // Top-5 랭크 맵 {district: rank(1..5)}
+  const top5RankMap = {};
+  sorted.slice(0, 5).forEach((r, i) => { top5RankMap[r.district] = i + 1; });
+
+  // ── 범례 동적 업데이트 ────────────────────────
+  const highEl = document.getElementById('legendHigh');
+  const midEl  = document.getElementById('legendMid');
+  const lowEl  = document.getElementById('legendLow');
+  if (highEl) highEl.textContent = `상위 8구 (${highThreshold.toLocaleString()}건+)`;
+  if (midEl)  midEl.textContent  = `중위 (${midThreshold.toLocaleString()}~${(highThreshold - 1).toLocaleString()}건)`;
+  if (lowEl)  lowEl.textContent  = `하위 (<${midThreshold.toLocaleString()}건)`;
+
   map.innerHTML = '';
   cartogramLayout.forEach(row => {
     row.forEach(cell => {
@@ -23825,22 +23897,73 @@ function renderCartogram() {
         div.setAttribute('aria-hidden', 'true');
       } else {
         const total = totalsMap[cell] || 0;
-        const isSelected = cell === selectedDistrict;
+        const isSelected = selectedDistrict !== null && cell === selectedDistrict;
+        const rank = top5RankMap[cell] || null;
         let bg = 'bg-slate-100 text-slate-600 border-slate-200';
         if (total >= highThreshold) bg = 'bg-indigo-600 text-white border-indigo-500';
         else if (total >= midThreshold) bg = 'bg-indigo-200 text-indigo-900 border-indigo-300';
         const ring = isSelected ? ' ring-2 ring-amber-400 ring-offset-1' : '';
+        // 랭크 배지 — 셀 내 position:relative (aria-label에 순위 포함되므로 role=presentation)
+        const rankBadge = rank
+          ? `<span role="presentation" style="position:absolute;top:2px;right:2px;width:13px;height:13px;border-radius:50%;background:rgba(245,158,11,0.92);color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1;">${rank}</span>`
+          : '';
+        const ariaRank = rank ? ` ${rank}위` : '';
         div.className = `h-12 rounded-lg border flex flex-col justify-center items-center cursor-pointer transition-colors hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-1 ${bg}${ring} p-0.5`;
+        div.style.position = 'relative';
         div.setAttribute('role', 'button');
         div.setAttribute('tabindex', '0');
-        div.setAttribute('aria-label', `${cell} ${total}건${isSelected ? ' (선택됨)' : ''}`);
+        div.setAttribute('aria-label', `${cell} ${total}건${ariaRank}${isSelected ? ' (선택됨)' : ''}`);
         div.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-        div.innerHTML = `<span class="text-[10px] font-bold leading-tight" aria-hidden="true">${cell.replace('구','')}</span><span class="text-[9px] leading-tight" aria-hidden="true">${total}건</span>`;
-        div.onclick = () => selectDistrict(cell);
-        div.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(cell); } };
+        div.innerHTML = rankBadge +
+          `<span class="text-[10px] font-bold leading-tight" aria-hidden="true">${cell.replace(/구$/,'')}</span>` +
+          `<span class="text-[9px] leading-tight" aria-hidden="true">${total}건</span>`;
+        div.onclick = () => selectDistrict(cell === selectedDistrict ? null : cell);
+        div.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(cell === selectedDistrict ? null : cell); } };
       }
       map.appendChild(div);
     });
+  });
+}
+
+// F. Top 5 랭킹 리스트
+function renderTop5() {
+  const periodKey = periods[periodIndex];
+  const rows = dataProvider.getDistrictTotals(granularity, periodKey);
+  const sorted = [...rows].sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+  const top5 = sorted.slice(0, 5);
+
+  const list = document.getElementById('top5List');
+  list.innerHTML = '';
+
+  top5.forEach((r, i) => {
+    const rank = i + 1;
+    const total = r.apt + r.nonApt;
+    const nonPct = total > 0 ? ((r.nonApt / total) * 100).toFixed(0) : 0;
+    const isSelected = selectedDistrict !== null && r.district === selectedDistrict;
+
+    const li = document.createElement('li');
+    // 선택된 구 강조: amber 테두리
+    li.className = `flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer text-xs transition-colors ${
+      isSelected
+        ? 'bg-amber-50 border border-amber-300 font-semibold'
+        : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
+    }`;
+    li.setAttribute('role', 'button');
+    li.setAttribute('tabindex', '0');
+    li.setAttribute('aria-label', `${rank}위 ${r.district} 총 ${total.toLocaleString()}건 비아파트 ${nonPct}%`);
+    li.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+
+    // 랭크 번호 서클
+    const rankColors = ['bg-indigo-600 text-white','bg-indigo-400 text-white','bg-indigo-300 text-indigo-900','bg-slate-300 text-slate-700','bg-slate-200 text-slate-600'];
+    li.innerHTML =
+      `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0 ${rankColors[i]}">${rank}</span>` +
+      `<span class="flex-1 truncate text-slate-800">${r.district.replace('구','구')}</span>` +
+      `<span class="text-slate-500 text-[9px] shrink-0">${total.toLocaleString()}건</span>` +
+      `<span class="text-slate-400 text-[9px] shrink-0">${nonPct}%비아</span>`;
+
+    li.onclick = () => selectDistrict(r.district === selectedDistrict ? null : r.district);
+    li.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(r.district === selectedDistrict ? null : r.district); } };
+    list.appendChild(li);
   });
 }
 
@@ -23859,27 +23982,41 @@ const CHART_LIGHT_OPTS = {
 };
 
 function renderDistrictChart() {
-  document.getElementById('chartDistrictTitle').textContent = selectedDistrict;
+  const titleEl = document.getElementById('chartDistrictTitle');
+  titleEl.textContent = selectedDistrict === null ? '서울 전체' : selectedDistrict;
   // 공간규격 모드에서만 단독/다가구 제외 안내 표시
   document.getElementById('chartNote').classList.toggle('hidden', chartMode !== 'room');
   const ctx = document.getElementById('districtChart').getContext('2d');
 
   let type, data, options;
+  const periodKey = periods[periodIndex];
 
   if (chartMode === 'trend') {
-    const trend  = dataProvider.getDistrictTrend(selectedDistrict, granularity);
+    let aptSeries, nonAptSeries;
+    if (selectedDistrict === null) {
+      // 서울 전체: 전 기간 25구 합산
+      const allPeriods = dataProvider.getPeriods(granularity);
+      aptSeries    = allPeriods.map(pk => dataProvider.getSeoulTotals(granularity, pk).apt);
+      nonAptSeries = allPeriods.map(pk => dataProvider.getSeoulTotals(granularity, pk).nonApt);
+    } else {
+      const trend = dataProvider.getDistrictTrend(selectedDistrict, granularity);
+      aptSeries    = trend.map(t => t.apt);
+      nonAptSeries = trend.map(t => t.nonApt);
+    }
     const labels = dataProvider.getPeriods(granularity).map(k => periodShortLabel(k, granularity));
     type = 'bar';
     data = {
       labels,
       datasets: [
-        { label: '아파트',   data: trend.map(t => t.apt),    backgroundColor: 'rgba(99,102,241,0.75)', borderRadius: 2 },
-        { label: '비아파트', data: trend.map(t => t.nonApt), backgroundColor: 'rgba(100,116,139,0.65)', borderRadius: 2 }
+        { label: '아파트',   data: aptSeries,    backgroundColor: 'rgba(99,102,241,0.75)', borderRadius: 2 },
+        { label: '비아파트', data: nonAptSeries, backgroundColor: 'rgba(100,116,139,0.65)', borderRadius: 2 }
       ]
     };
     options = CHART_LIGHT_OPTS;
   } else if (chartMode === 'room') {
-    const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periods[periodIndex]);
+    const bd = selectedDistrict === null
+      ? dataProvider.getSeoulBreakdown(granularity, periodKey)
+      : dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
     type = 'doughnut';
     data = {
       labels: ['원룸형 (전용 40㎡ 이하)', '투룸형 (40~60㎡)', '쓰리룸+ (60㎡ 초과)'],
@@ -23887,7 +24024,9 @@ function renderDistrictChart() {
     };
     options = { ...CHART_LIGHT_OPTS, scales: { x: { display: false }, y: { display: false } } };
   } else {
-    const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periods[periodIndex]);
+    const bd = selectedDistrict === null
+      ? dataProvider.getSeoulBreakdown(granularity, periodKey)
+      : dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
     type = 'pie';
     data = {
       labels: ['3억 이하', '3~6억', '6억 초과'],
@@ -23929,35 +24068,32 @@ function renderCommentary() {
   const topRow = [...rows].sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt))[0];
   const topCount = topRow ? (topRow.apt + topRow.nonApt) : 0;
 
-  // 선택 구 데이터
-  const distRow = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
-  const distTotal = distRow.apt + distRow.nonApt;
-  const nonAptPct = distTotal > 0 ? ((distRow.nonApt / distTotal) * 100).toFixed(1) : '0.0';
-
-  const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
-
-  // 최다 공간규격
-  const roomEntries = [['원룸형', bd.room.studio], ['투룸형', bd.room.two], ['쓰리룸+', bd.room.three]];
-  roomEntries.sort((a, b) => b[1] - a[1]);
-  const topRoom = roomEntries[0][0];
-
-  // 비아파트 최다 금액대
-  const priceEntries = [['3억 이하', bd.price.under3], ['3~6억', bd.price.under6], ['6억 초과', bd.price.over6]];
-  priceEntries.sort((a, b) => b[1] - a[1]);
-  const topPrice = priceEntries[0][0];
-
-  const eun = josa(selectedDistrict, '은/는');
-
   let text =
     `이번 ${granWord} 서울 아파트 거래 ${seoulCurr.apt.toLocaleString()}건, 비아파트 ${seoulCurr.nonApt.toLocaleString()}건${deltaClause}. ` +
-    `최다 거래 구: ${topRow ? topRow.district : '—'}(${topCount.toLocaleString()}건). ` +
-    `${selectedDistrict}${eun} 아파트 ${distRow.apt.toLocaleString()}건 · 비아파트 ${distRow.nonApt.toLocaleString()}건 (비아파트 ${nonAptPct}%). ` +
-    `최다 공간규격 ${topRoom}, 비아파트 최다 금액대 ${topPrice}.`;
+    `최다 거래 구: ${topRow ? topRow.district : '—'}(${topCount.toLocaleString()}건).`;
+
+  // 선택 구가 있을 때만 구별 상세 라인 추가
+  if (selectedDistrict !== null) {
+    const distRow   = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
+    const distTotal = distRow.apt + distRow.nonApt;
+    const nonAptPct = distTotal > 0 ? ((distRow.nonApt / distTotal) * 100).toFixed(1) : '0.0';
+    const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
+
+    const roomEntries = [['원룸형', bd.room.studio], ['투룸형', bd.room.two], ['쓰리룸+', bd.room.three]];
+    roomEntries.sort((a, b) => b[1] - a[1]);
+    const topRoom = roomEntries[0][0];
+
+    const priceEntries = [['3억 이하', bd.price.under3], ['3~6억', bd.price.under6], ['6억 초과', bd.price.over6]];
+    priceEntries.sort((a, b) => b[1] - a[1]);
+    const topPrice = priceEntries[0][0];
+
+    const eun = josa(selectedDistrict, '은/는');
+    text += ` ${selectedDistrict}${eun} 아파트 ${distRow.apt.toLocaleString()}건 · 비아파트 ${distRow.nonApt.toLocaleString()}건 (비아파트 ${nonAptPct}%). ` +
+            `최다 공간규격 ${topRoom}, 비아파트 최다 금액대 ${topPrice}.`;
+  }
 
   if (periodIndex === periods.length - 1) {
     text += ' ※ 최신 기간은 신고 진행 중이라 확정치가 아닙니다.';
-  } else if (viewRange.end < periods.length - 1 && periodIndex === viewRange.end) {
-    // 범위 필터 적용 중이며 해당 범위의 끝에 있을 때도 무관
   }
 
   document.getElementById('commentary').textContent = text;
@@ -23988,13 +24124,13 @@ function renderBarChart() {
   const rows = dataProvider.getDistrictTotals(granularity, periodKey);
   rows.sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
 
-  const labels    = rows.map(r => r.district.replace('구', ''));
+  const labels    = rows.map(r => r.district.replace(/구$/, ''));
   const fullNames = rows.map(r => r.district); // 클릭용 원본
   const aptVals   = rows.map(r => r.apt);
   const nonAptVals = rows.map(r => r.nonApt);
 
-  // 선택 구 강조: 테두리 두께로 표시
-  const selIdx = fullNames.indexOf(selectedDistrict);
+  // 선택 구 강조: 테두리 두께로 표시 (null이면 강조 없음)
+  const selIdx = selectedDistrict !== null ? fullNames.indexOf(selectedDistrict) : -1;
 
   const config = {
     type: 'bar',
@@ -24032,7 +24168,8 @@ function renderBarChart() {
       },
       onClick(evt, elements) {
         if (!elements.length) return;
-        selectDistrict(fullNames[elements[0].index]);
+        const clicked = fullNames[elements[0].index];
+        selectDistrict(clicked === selectedDistrict ? null : clicked);
       }
     }
   };
@@ -24230,6 +24367,7 @@ function _onRangeEndChange(e) {
 function renderAll() {
   renderKPI();
   renderCartogram();
+  renderTop5();
   renderBarChart();
   renderDistrictChart();
   renderCommentary();
