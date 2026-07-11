@@ -1,9 +1,11 @@
-// verify-simplicity.mjs
-// 품질 게이트 — 수량/밀도 제한(차트·컨트롤 개수, 스크롤 비율)은 폐기하고
-// 진짜 품질 불변식(무효 클래스·콘솔 에러·외부 리소스 규율)만 PASS/FAIL로 강제한다.
-// 카토그램·타임라인·3모드 차트 등 UI 확장을 허용하기 위한 개정(수량 항목은 정보용 출력만).
+// verify-quality.mjs
+// 품질 게이트 — 수량/밀도 제한(차트·컨트롤 개수, 스크롤 비율)은 요구 갱신으로 폐기하고
+// 진짜 품질 불변식(무효 클래스·콘솔 에러·외부 리소스 규율·모바일 폭 미깨짐)만 PASS/FAIL로 강제한다.
+// (구 verify-simplicity.mjs에서 개정: 카토그램·타임라인·3모드 등 UI 확장을 허용하기 위함)
 import puppeteer from 'puppeteer';
 const browser = await puppeteer.launch();
+
+// ── 데스크톱(1280) 검사 ──
 const page = await browser.newPage();
 await page.setViewport({ width: 1280, height: 800 });
 const errors = [];
@@ -18,11 +20,21 @@ const r = await page.evaluate(() => ({
   invalidClasses: document.body.innerHTML.includes('slate-850') || document.body.innerHTML.includes('min-height-screen'),
 }));
 
+// ── 모바일(390) 검사: 가로 오버플로(레이아웃 깨짐) 감지 ──
+const mobile = await browser.newPage();
+await mobile.setViewport({ width: 390, height: 780 });
+await mobile.goto('file://' + process.cwd() + '/dashboard.html', { waitUntil: 'networkidle0' });
+const m = await mobile.evaluate(() => ({
+  overflowX: document.documentElement.scrollWidth - window.innerWidth,
+}));
+const mobileOk = m.overflowX <= 2; // 2px 반올림 허용
+
 // 품질 불변식 (PASS/FAIL 강제)
 const checks = {
   '무효 클래스 0건 (slate-850/min-height-screen)': !r.invalidClasses,
   '외부 리소스 2개 이하 (Tailwind+Chart.js만, 신규 CDN 금지)': r.externalScripts <= 2,
   '콘솔 에러 0건': errors.length === 0,
+  '모바일 폭(≤400px) 가로 미깨짐': mobileOk,
 };
 
 // 정보용 지표 (수량/밀도 제한 폐기 — 실패 조건 아님)
@@ -31,6 +43,7 @@ console.table({
   '차트(canvas) 수': r.canvases,
   '컨트롤 수': r.controls,
   '스크롤 비율': Number(r.scrollRatio.toFixed(2)),
+  '모바일 가로 오버플로(px)': m.overflowX,
 });
 
 console.log('── 품질 게이트 ──');
