@@ -30,11 +30,11 @@
 </header>
 
 <!-- ─────────────────────────────────────────────
-  2. KPI 카드
+  2. KPI 카드 (선택 구 기준)
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 grid grid-cols-2 gap-3">
   <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-    <p class="text-slate-500 text-xs mb-1">서울 전체 아파트 거래</p>
+    <p class="text-slate-500 text-xs mb-1"><span id="kpiDistrictLabel">—</span> 아파트 거래</p>
     <div class="flex items-baseline gap-2">
       <span class="text-2xl font-bold text-slate-900" id="kpiApt">—</span>
       <span class="text-slate-500 text-xs">건</span>
@@ -42,7 +42,7 @@
     <p class="text-xs mt-1 font-semibold" id="kpiAptDelta">—</p>
   </div>
   <div class="bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-    <p class="text-slate-500 text-xs mb-1">서울 전체 비아파트 거래</p>
+    <p class="text-slate-500 text-xs mb-1"><span id="kpiDistrictLabel2">—</span> 비아파트 거래</p>
     <div class="flex items-baseline gap-2">
       <span class="text-2xl font-bold text-indigo-600" id="kpiNon">—</span>
       <span class="text-slate-500 text-xs">건</span>
@@ -52,38 +52,66 @@
 </section>
 
 <!-- ─────────────────────────────────────────────
-  3. 바 차트 (25개구 거래량, 클릭으로 구 선택)
+  3. 타임라인 슬라이더 + 자동재생
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-  <p class="text-xs text-slate-500 mb-2">25개구 거래량 — 아파트 / 비아파트 비교 (총량 내림차순, 바 클릭으로 구 선택) · 비아파트=연립다세대·단독다가구·오피스텔</p>
-  <div class="h-56">
-    <canvas id="barChart"></canvas>
+  <div class="flex items-center gap-3 mb-3">
+    <button id="btnPrev" onclick="navigate(-1)"
+      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
+      &#8592; 이전
+    </button>
+    <span id="periodLabel" class="text-sm font-bold text-indigo-600 min-w-36 text-center">—</span>
+    <button id="btnNext" onclick="navigate(+1)"
+      class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
+      다음 &#8594;
+    </button>
+    <input type="range" id="timeSlider" min="0" max="11" value="11"
+      class="flex-1 h-2 accent-indigo-600 cursor-pointer">
+    <button id="playBtn" onclick="toggleAutoplay()"
+      class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors">
+      <span id="playIcon">&#9654;</span>
+      <span id="playText">재생</span>
+    </button>
   </div>
 </section>
 
 <!-- ─────────────────────────────────────────────
-  4. 라인 차트 (선택 구 시계열)
+  4. 격자형 카토그램 지도
 ───────────────────────────────────────────── -->
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
-  <p class="text-xs text-slate-500 mb-1">선택 구 추이 — <span id="lineChartTitle" class="text-slate-900 font-semibold">강남구</span></p>
-  <div class="h-48">
-    <canvas id="lineChart"></canvas>
+  <div class="flex items-center justify-between mb-3">
+    <p class="text-xs font-semibold text-slate-700">서울시 거래 활성도 지형도 <span class="text-slate-400 font-normal">(셀 클릭 → 구 선택)</span></p>
+    <div class="flex gap-3 text-xs">
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600"></span><span class="text-slate-600">상위</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200"></span><span class="text-slate-600">중위</span></span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-slate-100 border border-slate-200"></span><span class="text-slate-600">하위</span></span>
+    </div>
   </div>
+  <div class="grid gap-1.5" id="cartogramMap" style="grid-template-columns: repeat(8, 1fr);"></div>
 </section>
 
 <!-- ─────────────────────────────────────────────
-  5. 기간 네비게이션
+  5. 선택 구 분석: 3모드 차트 + 분석 코멘터리
 ───────────────────────────────────────────── -->
-<section class="max-w-6xl mx-auto flex items-center justify-center gap-4">
-  <button id="btnPrev" onclick="navigate(-1)"
-    class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
-    ← 이전
-  </button>
-  <span id="periodLabel" class="text-base font-bold text-indigo-600 min-w-32 text-center">—</span>
-  <button id="btnNext" onclick="navigate(+1)"
-    class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors text-slate-700">
-    다음 →
-  </button>
+<section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <p class="text-sm font-bold text-slate-800">분석: <span id="chartDistrictTitle" class="text-indigo-600">—</span></p>
+    <div class="flex gap-1">
+      <button id="chartTab-trend" onclick="switchChartMode('trend')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors">거래추이</button>
+      <button id="chartTab-room" onclick="switchChartMode('room')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">공간규격별</button>
+      <button id="chartTab-price" onclick="switchChartMode('price')"
+        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors">금액대별</button>
+    </div>
+  </div>
+  <div class="h-52">
+    <canvas id="districtChart"></canvas>
+  </div>
+  <!-- 분석 코멘터리 -->
+  <div class="mt-3 pt-3 border-t border-slate-100">
+    <p class="text-xs text-slate-600 leading-relaxed" id="commentary">—</p>
+  </div>
 </section>
 
 <!-- ─────────────────────────────────────────────
@@ -8852,21 +8880,62 @@ const dataProvider = (() => {
         (acc, r) => ({ apt: acc.apt + r.apt, nonApt: acc.nonApt + r.nonApt }),
         { apt: 0, nonApt: 0 }
       );
+    },
+
+    /** 특정 구·기간의 공간규격·금액대 분류 {room:{studio,two,three}, price:{under3,under6,over6}} */
+    getDistrictBreakdown(granularity, district, periodKey) {
+      const periods = DATA.periods[granularity];
+      const idx = periods.indexOf(periodKey);
+      const seq = DATA.byDistrict[district][granularity];
+      const entry = idx >= 0 ? seq[idx] : seq[seq.length - 1];
+
+      // 실데이터: room/price 필드 직접 읽기
+      if (entry.room && entry.price) {
+        return { room: entry.room, price: entry.price };
+      }
+
+      // 목데이터 폴백: nonApt 기반 균등 분할 추정
+      const nonApt = entry.nonApt;
+      const total  = entry.apt + nonApt;
+      const base3  = Math.floor(total / 3);
+      return {
+        room:  { studio: base3, two: base3, three: total - base3 * 2 },
+        price: {
+          under3: Math.floor(nonApt * 0.45),
+          under6: Math.floor(nonApt * 0.40),
+          over6:  nonApt - Math.floor(nonApt * 0.45) - Math.floor(nonApt * 0.40)
+        }
+      };
     }
   };
 })();
 
 // ════════════════════════════════════════════════
-//  상태
+//  상태 (단일 소스)
 // ════════════════════════════════════════════════
-let granularity   = 'week';
+let granularity      = 'week';
 let selectedDistrict = '강남구';
-let periods       = [];
-let periodIndex   = 0; // 현재 선택 기간 인덱스
+let periods          = [];
+let periodIndex      = 0;
 
-// Chart.js 인스턴스
-let barChartInst  = null;
-let lineChartInst = null;
+// Chart.js 인스턴스 (단일 canvas 재사용)
+let districtChartInst = null;
+let chartMode         = 'trend'; // 'trend' | 'room' | 'price'
+
+// 자동재생 상태
+let autoplayTimer     = null;
+let isPlaying         = false;
+
+// 카토그램 레이아웃 (8×7)
+const cartogramLayout = [
+  [null,null,null,'도봉구','노원구',null,null,null],
+  [null,null,'강북구','성북구','중랑구',null,null,null],
+  [null,'은평구','서대문구','종로구','동대문구','광진구','강동구',null],
+  [null,'마포구','중구','성동구',null,null,'송파구',null],
+  ['강서구','양천구','영등포구','용산구','서초구','강남구',null,null],
+  [null,'구로구','동작구','관악구',null,null,null,null],
+  [null,'금천구',null,null,null,null,null,null]
+];
 
 // ════════════════════════════════════════════════
 //  헬퍼
@@ -8876,21 +8945,19 @@ function formatPeriodLabel(key, gran) {
     const [y, m] = key.split('-');
     return `${y}년 ${parseInt(m)}월`;
   }
-  // week: "2026-06-29~2026-07-05"
   const parts = key.split('~');
-  return `${parts[0]} ~ ${parts[1].slice(5)}`; // "2026-06-29 ~ 07-05"
+  return `${parts[0]} ~ ${parts[1].slice(5)}`;
 }
 
 function deltaPct(curr, prev) {
-  if (!prev) return null;
-  const pct = ((curr - prev) / prev * 100).toFixed(1);
-  return parseFloat(pct);
+  if (prev == null || prev === 0) return null;
+  return parseFloat(((curr - prev) / prev * 100).toFixed(1));
 }
 
 function renderDelta(elementId, curr, prev) {
   const el = document.getElementById(elementId);
   const pct = deltaPct(curr, prev);
-  if (pct === null) { el.textContent = '—'; return; }
+  if (pct === null) { el.textContent = '—'; el.className = 'text-xs mt-1 font-semibold text-slate-500'; return; }
   if (pct > 0) {
     el.textContent = `▲ ${pct}%`;
     el.className = 'text-xs mt-1 font-semibold text-red-600';
@@ -8898,170 +8965,242 @@ function renderDelta(elementId, curr, prev) {
     el.textContent = `▼ ${Math.abs(pct)}%`;
     el.className = 'text-xs mt-1 font-semibold text-blue-600';
   } else {
-    el.textContent = `— 0%`;
+    el.textContent = '— 0%';
     el.className = 'text-xs mt-1 font-semibold text-slate-500';
   }
+}
+
+function periodShortLabel(key, gran) {
+  if (gran === 'month') {
+    const [y, m] = key.split('-');
+    return `${y.slice(2)}.${m}`;
+  }
+  return key.split('~')[0].slice(5); // "06-29"
 }
 
 // ════════════════════════════════════════════════
 //  렌더링
 // ════════════════════════════════════════════════
+
+// A. KPI 카드 — 선택 구 기준
 function renderKPI() {
   const periodKey     = periods[periodIndex];
   const prevPeriodKey = periodIndex > 0 ? periods[periodIndex - 1] : null;
 
-  const curr = dataProvider.getSeoulTotals(granularity, periodKey);
-  const prev = prevPeriodKey ? dataProvider.getSeoulTotals(granularity, prevPeriodKey) : null;
+  const rows     = dataProvider.getDistrictTotals(granularity, periodKey);
+  const distRow  = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
 
-  document.getElementById('kpiApt').textContent  = curr.apt.toLocaleString();
-  document.getElementById('kpiNon').textContent  = curr.nonApt.toLocaleString();
-  renderDelta('kpiAptDelta', curr.apt,    prev?.apt);
-  renderDelta('kpiNonDelta', curr.nonApt, prev?.nonApt);
+  let prevApt = null, prevNonApt = null;
+  if (prevPeriodKey) {
+    const prevRows = dataProvider.getDistrictTotals(granularity, prevPeriodKey);
+    const prevRow  = prevRows.find(r => r.district === selectedDistrict);
+    if (prevRow) { prevApt = prevRow.apt; prevNonApt = prevRow.nonApt; }
+  }
+
+  document.getElementById('kpiDistrictLabel').textContent  = selectedDistrict;
+  document.getElementById('kpiDistrictLabel2').textContent = selectedDistrict;
+  document.getElementById('kpiApt').textContent            = distRow.apt.toLocaleString();
+  document.getElementById('kpiNon').textContent            = distRow.nonApt.toLocaleString();
+  renderDelta('kpiAptDelta', distRow.apt,    prevApt);
+  renderDelta('kpiNonDelta', distRow.nonApt, prevNonApt);
 }
 
-function renderBarChart() {
+// B. 카토그램
+function renderCartogram() {
+  const map       = document.getElementById('cartogramMap');
   const periodKey = periods[periodIndex];
-  const rows = dataProvider.getDistrictTotals(granularity, periodKey);
+  const rows      = dataProvider.getDistrictTotals(granularity, periodKey);
 
-  // 총량 내림차순 정렬
-  rows.sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+  // 총량으로 tier 계산
+  const sorted = [...rows].sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+  const highThreshold = (sorted[7]?.apt  || 0) + (sorted[7]?.nonApt  || 0);
+  const midThreshold  = (sorted[15]?.apt || 0) + (sorted[15]?.nonApt || 0);
+  const totalsMap = {};
+  rows.forEach(r => { totalsMap[r.district] = r.apt + r.nonApt; });
 
-  const labels = rows.map(r => r.district);
-  const aptVals    = rows.map(r => r.apt);
-  const nonAptVals = rows.map(r => r.nonApt);
-
-  const config = {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: '아파트', data: aptVals,    backgroundColor: 'rgba(99,102,241,0.8)',   borderRadius: 2 },
-        { label: '비아파트', data: nonAptVals, backgroundColor: 'rgba(100,116,139,0.75)', borderRadius: 2 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#475569', font: { size: 11 } } },
-        tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
-      },
-      scales: {
-        x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: '#e2e8f0' } },
-        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#e2e8f0' } }
-      },
-      onClick(evt, elements) {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        selectDistrict(labels[idx]);
+  map.innerHTML = '';
+  cartogramLayout.forEach(row => {
+    row.forEach(cell => {
+      const div = document.createElement('div');
+      if (!cell) {
+        div.className = 'h-12';
+      } else {
+        const total = totalsMap[cell] || 0;
+        const isSelected = cell === selectedDistrict;
+        let bg = 'bg-slate-100 text-slate-600 border-slate-200';
+        if (total >= highThreshold) bg = 'bg-indigo-600 text-white border-indigo-500';
+        else if (total >= midThreshold) bg = 'bg-indigo-200 text-indigo-900 border-indigo-300';
+        const ring = isSelected ? ' ring-2 ring-amber-400 ring-offset-1' : '';
+        div.className = `h-12 rounded-lg border flex flex-col justify-center items-center cursor-pointer transition-colors hover:opacity-80 ${bg}${ring} p-0.5`;
+        div.innerHTML = `<span class="text-[10px] font-bold leading-tight">${cell.replace('구','')}</span><span class="text-[9px] leading-tight">${total}건</span>`;
+        div.onclick = () => selectDistrict(cell);
       }
-    }
-  };
-
-  if (barChartInst) {
-    barChartInst.data.labels           = labels;
-    barChartInst.data.datasets[0].data = aptVals;
-    barChartInst.data.datasets[1].data = nonAptVals;
-    barChartInst.update();
-  } else {
-    barChartInst = new Chart(document.getElementById('barChart'), config);
-  }
-}
-
-function renderLineChart() {
-  document.getElementById('lineChartTitle').textContent = selectedDistrict;
-  const trend  = dataProvider.getDistrictTrend(selectedDistrict, granularity);
-  const labels = dataProvider.getPeriods(granularity).map((k, i) => {
-    if (granularity === 'month') {
-      const [y, m] = k.split('-');
-      return `${y.slice(2)}.${m}`;
-    }
-    // 주간: 짧게 월/일
-    return k.split('~')[0].slice(5); // "06-29"
+      map.appendChild(div);
+    });
   });
-
-  const aptVals    = trend.map(t => t.apt);
-  const nonAptVals = trend.map(t => t.nonApt);
-
-  const config = {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: '아파트', data: aptVals,
-          borderColor: 'rgb(99,102,241)', backgroundColor: 'rgba(99,102,241,0.1)',
-          tension: 0.3, pointRadius: 3
-        },
-        {
-          label: '비아파트', data: nonAptVals,
-          borderColor: 'rgb(100,116,139)', backgroundColor: 'rgba(100,116,139,0.1)',
-          tension: 0.3, pointRadius: 3
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#475569', font: { size: 11 } } },
-        tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
-      },
-      scales: {
-        x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: '#e2e8f0' } },
-        y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#e2e8f0' } }
-      }
-    }
-  };
-
-  if (lineChartInst) {
-    lineChartInst.data.labels           = labels;
-    lineChartInst.data.datasets[0].data = aptVals;
-    lineChartInst.data.datasets[1].data = nonAptVals;
-    lineChartInst.update();
-  } else {
-    lineChartInst = new Chart(document.getElementById('lineChart'), config);
-  }
 }
 
+// C. 3모드 차트 (단일 canvas)
+const CHART_LIGHT_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { labels: { color: '#475569', font: { size: 11 } } },
+    tooltip: { backgroundColor: '#ffffff', titleColor: '#0f172a', bodyColor: '#334155', borderColor: '#cbd5e1', borderWidth: 1 }
+  },
+  scales: {
+    x: { ticks: { color: '#475569', font: { size: 9 } }, grid: { color: '#e2e8f0' } },
+    y: { ticks: { color: '#475569', font: { size: 10 } }, grid: { color: '#e2e8f0' } }
+  }
+};
+
+function renderDistrictChart() {
+  document.getElementById('chartDistrictTitle').textContent = selectedDistrict;
+  const ctx = document.getElementById('districtChart').getContext('2d');
+
+  let type, data, options;
+
+  if (chartMode === 'trend') {
+    const trend  = dataProvider.getDistrictTrend(selectedDistrict, granularity);
+    const labels = dataProvider.getPeriods(granularity).map(k => periodShortLabel(k, granularity));
+    type = 'bar';
+    data = {
+      labels,
+      datasets: [
+        { label: '아파트',   data: trend.map(t => t.apt),    backgroundColor: 'rgba(99,102,241,0.75)', borderRadius: 2 },
+        { label: '비아파트', data: trend.map(t => t.nonApt), backgroundColor: 'rgba(100,116,139,0.65)', borderRadius: 2 }
+      ]
+    };
+    options = CHART_LIGHT_OPTS;
+  } else if (chartMode === 'room') {
+    const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periods[periodIndex]);
+    type = 'doughnut';
+    data = {
+      labels: ['원룸형 (전용 40㎡ 이하)', '투룸형 (40~60㎡)', '쓰리룸+ (60㎡ 초과)'],
+      datasets: [{ data: [bd.room.studio, bd.room.two, bd.room.three], backgroundColor: ['#22c55e','#6366f1','#e11d48'], borderWidth: 0, hoverOffset: 6 }]
+    };
+    options = { ...CHART_LIGHT_OPTS, scales: { x: { display: false }, y: { display: false } } };
+  } else {
+    const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periods[periodIndex]);
+    type = 'pie';
+    data = {
+      labels: ['3억 이하', '3~6억', '6억 초과'],
+      datasets: [{ data: [bd.price.under3, bd.price.under6, bd.price.over6], backgroundColor: ['#38bdf8','#fbbf24','#a855f7'], borderWidth: 0, hoverOffset: 6 }]
+    };
+    options = { ...CHART_LIGHT_OPTS, scales: { x: { display: false }, y: { display: false } } };
+  }
+
+  if (districtChartInst) {
+    districtChartInst.destroy();
+    districtChartInst = null;
+  }
+  districtChartInst = new Chart(ctx, { type, data, options });
+}
+
+// D. 분석 코멘터리 (실수치 기반)
+function renderCommentary() {
+  const periodKey = periods[periodIndex];
+  const rows      = dataProvider.getDistrictTotals(granularity, periodKey);
+  const row       = rows.find(r => r.district === selectedDistrict) || { apt: 0, nonApt: 0 };
+  const total     = row.apt + row.nonApt;
+  const nonAptPct = total > 0 ? ((row.nonApt / total) * 100).toFixed(1) : '0.0';
+
+  const bd = dataProvider.getDistrictBreakdown(granularity, selectedDistrict, periodKey);
+
+  // 지배적 공간규격
+  const roomEntries = [['원룸형', bd.room.studio], ['투룸형', bd.room.two], ['쓰리룸+', bd.room.three]];
+  roomEntries.sort((a, b) => b[1] - a[1]);
+  const domRoom = roomEntries[0][0];
+
+  // 지배적 금액대
+  const priceEntries = [['3억 이하', bd.price.under3], ['3~6억', bd.price.under6], ['6억 초과', bd.price.over6]];
+  priceEntries.sort((a, b) => b[1] - a[1]);
+  const domPrice = priceEntries[0][0];
+
+  document.getElementById('commentary').textContent =
+    `${selectedDistrict}은 현재 기간 아파트 ${row.apt.toLocaleString()}건, ` +
+    `비아파트 ${row.nonApt.toLocaleString()}건(비아파트 비율 ${nonAptPct}%)을 기록했습니다. ` +
+    `비아파트 거래는 ${domRoom} 공간 규격이 가장 많았고, 가격대는 ${domPrice} 구간이 우세했습니다.`;
+}
+
+// 기간 네비게이션 + 슬라이더 동기화
 function renderNavigation() {
   const label = formatPeriodLabel(periods[periodIndex], granularity);
   document.getElementById('periodLabel').textContent = label;
+  document.getElementById('btnPrev').disabled = periodIndex <= 0;
+  document.getElementById('btnNext').disabled = periodIndex >= periods.length - 1;
 
-  const prevBtn = document.getElementById('btnPrev');
-  const nextBtn = document.getElementById('btnNext');
-
-  // 범위 끝에서 버튼 비활성화
-  if (periodIndex <= 0) {
-    prevBtn.setAttribute('disabled', '');
-  } else {
-    prevBtn.removeAttribute('disabled');
-  }
-
-  if (periodIndex >= periods.length - 1) {
-    nextBtn.setAttribute('disabled', '');
-  } else {
-    nextBtn.removeAttribute('disabled');
-  }
+  const slider = document.getElementById('timeSlider');
+  slider.max   = String(periods.length - 1);
+  slider.value = String(periodIndex);
 }
 
 function renderAll() {
   renderKPI();
-  renderBarChart();
-  renderLineChart();
+  renderCartogram();
+  renderDistrictChart();
+  renderCommentary();
   renderNavigation();
+}
+
+// ════════════════════════════════════════════════
+//  차트 모드 스위치
+// ════════════════════════════════════════════════
+function switchChartMode(mode) {
+  chartMode = mode;
+  ['trend','room','price'].forEach(m => {
+    const btn = document.getElementById(`chartTab-${m}`);
+    if (m === mode) {
+      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white transition-colors';
+    } else {
+      btn.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors';
+    }
+  });
+  renderDistrictChart();
+}
+
+// ════════════════════════════════════════════════
+//  자동재생
+// ════════════════════════════════════════════════
+function stopAutoplay() {
+  if (autoplayTimer) { clearInterval(autoplayTimer); autoplayTimer = null; }
+  isPlaying = false;
+  document.getElementById('playIcon').textContent = '▶';
+  document.getElementById('playText').textContent = '재생';
+  document.getElementById('playBtn').className =
+    'flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors';
+}
+
+function toggleAutoplay() {
+  if (isPlaying) {
+    stopAutoplay();
+  } else {
+    isPlaying = true;
+    document.getElementById('playIcon').textContent = '⏸';
+    document.getElementById('playText').textContent = '정지';
+    document.getElementById('playBtn').className =
+      'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
+    autoplayTimer = setInterval(() => {
+      periodIndex = (periodIndex + 1) % periods.length;
+      renderAll();
+    }, 1500);
+  }
 }
 
 // ════════════════════════════════════════════════
 //  이벤트 핸들러
 // ════════════════════════════════════════════════
+document.getElementById('timeSlider').addEventListener('input', e => {
+  stopAutoplay();
+  periodIndex = parseInt(e.target.value);
+  renderAll();
+});
+
 function setGranularity(gran) {
   granularity = gran;
   periods     = dataProvider.getPeriods(gran);
-  // 기본값: 가장 최근 완료 기간 = 마지막 인덱스
   periodIndex = periods.length - 1;
 
-  // 토글 버튼 스타일 업데이트
   const wBtn = document.getElementById('btnWeek');
   const mBtn = document.getElementById('btnMonth');
   if (gran === 'week') {
@@ -9071,7 +9210,7 @@ function setGranularity(gran) {
     mBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors bg-indigo-600 text-white';
     wBtn.className = 'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors text-slate-600 hover:text-slate-900';
   }
-
+  stopAutoplay();
   renderAll();
 }
 
@@ -9084,7 +9223,7 @@ function navigate(dir) {
 
 function selectDistrict(district) {
   selectedDistrict = district;
-  renderLineChart();
+  renderAll();
 }
 
 // ════════════════════════════════════════════════
