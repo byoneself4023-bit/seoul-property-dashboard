@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 //  이미 설정된 환경 변수는 덮어쓰지 않음(인라인 우선)
 // ════════════════════════════════════════════════
 (() => {
-  const envPath = join(__dirname, '.env');
+  const envPath = join(__dirname, '..', '.env');  // 루트 .env (dashboard/ 하위 이동 후 상위 참조)
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     if (line.trim().startsWith('#')) continue;

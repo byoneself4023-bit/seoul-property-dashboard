@@ -3,6 +3,11 @@
 // 진짜 품질 불변식(무효 클래스·콘솔 에러·외부 리소스 규율·모바일 폭 미깨짐)만 PASS/FAIL로 강제한다.
 // (구 verify-simplicity.mjs에서 개정: 카토그램·타임라인·3모드 등 UI 확장을 허용하기 위함)
 import puppeteer from 'puppeteer';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+// dashboard.html은 이 스크립트와 같은 dashboard/ 폴더에 위치 (CWD 무관)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DASHBOARD = 'file://' + join(__dirname, 'dashboard.html');
 const browser = await puppeteer.launch();
 
 // ── 데스크톱(1280) 검사 ──
@@ -11,7 +16,7 @@ await page.setViewport({ width: 1280, height: 800 });
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push(String(e)));
-await page.goto('file://' + process.cwd() + '/dashboard.html', { waitUntil: 'networkidle0' });
+await page.goto(DASHBOARD, { waitUntil: 'networkidle0' });
 const r = await page.evaluate(() => ({
   scrollRatio: document.body.scrollHeight / window.innerHeight,
   controls: document.querySelectorAll('button, [role="button"], select, input').length,
@@ -23,7 +28,7 @@ const r = await page.evaluate(() => ({
 // ── 모바일(390) 검사: 가로 오버플로(레이아웃 깨짐) 감지 ──
 const mobile = await browser.newPage();
 await mobile.setViewport({ width: 390, height: 780 });
-await mobile.goto('file://' + process.cwd() + '/dashboard.html', { waitUntil: 'networkidle0' });
+await mobile.goto(DASHBOARD, { waitUntil: 'networkidle0' });
 const m = await mobile.evaluate(() => ({
   overflowX: document.documentElement.scrollWidth - window.innerWidth,
 }));
