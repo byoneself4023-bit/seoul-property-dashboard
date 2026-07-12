@@ -71,9 +71,10 @@
     <span class="text-xs text-slate-500 font-medium">범위:</span>
     <select id="rangeStart" aria-label="시작 월"
       class="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed"></select>
-    <span class="text-xs text-slate-400">~</span>
+    <span id="rangeSep" class="text-xs text-slate-400">~</span>
     <select id="rangeEnd" aria-label="종료 월"
       class="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed"></select>
+    <span id="rangeDisabledNote" class="hidden text-xs text-slate-400 italic" title="주간 데이터는 최근 12주만 제공됩니다">주간 모드에서는 사용 불가</span>
   </div>
   <!-- 3-C: 슬라이더 + 네비게이션 -->
   <div class="flex flex-wrap items-center gap-2">
@@ -90,7 +91,7 @@
       aria-label="기간 선택"
       class="flex-1 min-w-24 h-2 accent-indigo-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded">
     <button id="playBtn" onclick="toggleAutoplay()" aria-pressed="false"
-      class="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors">
+      class="flex items-center justify-center gap-1.5 px-3 py-1.5 min-w-[88px] bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors">
       <span id="playIcon" aria-hidden="true">&#9654;</span>
       <span id="playText">재생</span>
     </button>
@@ -23915,7 +23916,7 @@ function renderCartogram() {
         div.setAttribute('aria-label', `${cell} ${total}건${ariaRank}${isSelected ? ' (선택됨)' : ''}`);
         div.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         div.innerHTML = rankBadge +
-          `<span class="text-[10px] font-bold leading-tight" aria-hidden="true">${cell.replace(/구$/,'')}</span>` +
+          `<span class="text-[10px] font-bold leading-tight" aria-hidden="true">${cell === '중구' ? '중구' : cell.replace(/구$/,'')}</span>` +
           `<span class="text-[9px] leading-tight" aria-hidden="true">${total}건</span>`;
         div.onclick = () => selectDistrict(cell === selectedDistrict ? null : cell);
         div.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(cell === selectedDistrict ? null : cell); } };
@@ -23959,7 +23960,7 @@ function renderTop5() {
       `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0 ${rankColors[i]}">${rank}</span>` +
       `<span class="flex-1 truncate text-slate-800">${r.district.replace('구','구')}</span>` +
       `<span class="text-slate-500 text-[9px] shrink-0">${total.toLocaleString()}건</span>` +
-      `<span class="text-slate-400 text-[9px] shrink-0">${nonPct}%비아</span>`;
+      `<span class="text-slate-400 text-[9px] shrink-0">비아파트 ${nonPct}%</span>`;
 
     li.onclick = () => selectDistrict(r.district === selectedDistrict ? null : r.district);
     li.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDistrict(r.district === selectedDistrict ? null : r.district); } };
@@ -24257,6 +24258,11 @@ function _buildYearControls() {
     endSel.title      = '';
     startSel.onchange = _onRangeStartChange;
     endSel.onchange   = _onRangeEndChange;
+    // 월간: 드롭다운 표시, 주간 안내 숨김
+    startSel.classList.remove('hidden');
+    endSel.classList.remove('hidden');
+    document.getElementById('rangeSep').classList.remove('hidden');
+    document.getElementById('rangeDisabledNote').classList.add('hidden');
   } else {
     startSel.disabled = true;
     endSel.disabled   = true;
@@ -24264,6 +24270,11 @@ function _buildYearControls() {
     endSel.title      = disabledTitle;
     startSel.onchange = null;
     endSel.onchange   = null;
+    // 주간: 빈 드롭다운 숨기고 연도 필터와 동일 톤 안내 표시
+    startSel.classList.add('hidden');
+    endSel.classList.add('hidden');
+    document.getElementById('rangeSep').classList.add('hidden');
+    document.getElementById('rangeDisabledNote').classList.remove('hidden');
   }
 }
 
@@ -24399,7 +24410,7 @@ function stopAutoplay() {
   document.getElementById('playIcon').textContent = '▶';
   document.getElementById('playText').textContent = '재생';
   const btn = document.getElementById('playBtn');
-  btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors';
+  btn.className = 'flex items-center justify-center gap-1.5 px-3 py-1.5 min-w-[88px] bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors';
   btn.setAttribute('aria-pressed', 'false');
 }
 
@@ -24409,9 +24420,9 @@ function toggleAutoplay() {
   } else {
     isPlaying = true;
     document.getElementById('playIcon').textContent = '⏸';
-    document.getElementById('playText').textContent = '정지';
+    document.getElementById('playText').textContent = '일시정지';
     const btn = document.getElementById('playBtn');
-    btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 text-white rounded-lg text-xs font-bold transition-colors';
+    btn.className = 'flex items-center justify-center gap-1.5 px-3 py-1.5 min-w-[88px] bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors';
     btn.setAttribute('aria-pressed', 'true');
     autoplayTimer = setInterval(() => {
       // viewRange.end에서 정지 (전체 범위가 아닌 선택 범위 내)
