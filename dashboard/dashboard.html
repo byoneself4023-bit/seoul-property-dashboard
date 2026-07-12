@@ -24404,6 +24404,10 @@ function switchChartMode(mode) {
 // ════════════════════════════════════════════════
 //  자동재생
 // ════════════════════════════════════════════════
+// 일시정지 아이콘: 컬러 이모지(⏸ U+23F8)는 시스템이 회색 박스 이모지로 렌더해 버튼에서 튄다.
+// 버튼 글자색(currentColor=흰색)을 그대로 쓰는 단색 SVG 두 막대로 대체 — 재생 ▶와 동일 톤.
+const PAUSE_ICON_SVG = '<svg viewBox="0 0 12 14" aria-hidden="true" style="width:0.8em;height:0.8em;display:inline-block;vertical-align:-0.04em;fill:currentColor"><rect x="1.6" y="0.5" width="3" height="13" rx="1.1"></rect><rect x="7.4" y="0.5" width="3" height="13" rx="1.1"></rect></svg>';
+
 function stopAutoplay() {
   if (autoplayTimer) { clearInterval(autoplayTimer); autoplayTimer = null; }
   isPlaying = false;
@@ -24419,7 +24423,7 @@ function toggleAutoplay() {
     stopAutoplay();
   } else {
     isPlaying = true;
-    document.getElementById('playIcon').textContent = '⏸';
+    document.getElementById('playIcon').innerHTML = PAUSE_ICON_SVG;
     document.getElementById('playText').textContent = '일시정지';
     const btn = document.getElementById('playBtn');
     btn.className = 'flex items-center justify-center gap-1.5 px-3 py-1.5 min-w-[88px] bg-indigo-600 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white rounded-lg text-xs font-bold transition-colors';
