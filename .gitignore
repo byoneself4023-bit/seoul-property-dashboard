@@ -228,7 +228,3 @@ data.json
 newsletter/output/
 # node_modules (newsletter 서브패키지)
 newsletter/node_modules/
-
-# git worktree 공유 심볼릭 링크 (~/Project-dash → ~/Project; trailing-slash 패턴은 심볼릭 미매칭)
-/node_modules
-/dashboard/.cache
