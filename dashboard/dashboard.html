@@ -55,6 +55,7 @@
     </div>
     <p class="text-xs mt-1 font-semibold" id="kpiNonDelta">—</p>
   </div>
+  <p id="kpiProvisional" class="col-span-2 -mt-1 text-xs text-amber-600 hidden">※ 최신 기간은 신고 진행 중이라 <b>잠정치</b>입니다 (실제보다 낮게 표시).</p>
 </section>
 
 <!-- ─────────────────────────────────────────────
@@ -23862,6 +23863,9 @@ function renderKPI() {
   document.getElementById('kpiNon').textContent            = nonApt.toLocaleString();
   renderDelta('kpiAptDelta', apt,    prevApt);
   renderDelta('kpiNonDelta', nonApt, prevNonApt);
+  // 최신(미완결) 기간이면 KPI에도 잠정치 표기 (급락 오해 방지)
+  const prov = document.getElementById('kpiProvisional');
+  if (prov) prov.classList.toggle('hidden', periodIndex !== periods.length - 1);
 }
 
 // B. 카토그램 + 범례 동적 업데이트 + 순위 배지
@@ -24423,6 +24427,8 @@ function toggleAutoplay() {
     stopAutoplay();
   } else {
     isPlaying = true;
+    // 끝에서 재생을 누르면 시작점으로 되감아 전체 구간(예: 2022~현재)을 애니메이션 (시연 동선)
+    if (periodIndex >= viewRange.end) { periodIndex = viewRange.start; renderAll(); }
     document.getElementById('playIcon').innerHTML = PAUSE_ICON_SVG;
     document.getElementById('playText').textContent = '일시정지';
     const btn = document.getElementById('playBtn');
