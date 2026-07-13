@@ -31,6 +31,18 @@ rc=0
     rc=1
   fi
   echo "=== ingest 종료 (exit=$rc): $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+
+  # 배포: ingest 가 exit 0 으로 성공한 경우에만 호출한다.
+  # 실패(rc!=0)면 스킵하고 사유를 로그에 남긴다 — 실패한 데이터가 라이브에 올라가지 않게.
+  if [ "$rc" -eq 0 ]; then
+    echo "=== deploy 시작: $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+    sh "$SCRIPT_DIR/deploy.sh"
+    drc=$?
+    echo "=== deploy 종료 (exit=$drc): $(date '+%Y-%m-%d %H:%M:%S %Z') ==="
+    rc="$drc"
+  else
+    echo "[deploy] ingest 실패(rc=$rc) → 배포 스킵 (실패 데이터 라이브 미반영)"
+  fi
 } > "$LOG" 2>&1
 
 exit "$rc"
