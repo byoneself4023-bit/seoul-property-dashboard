@@ -181,6 +181,9 @@ secret-*.*
 .moai/status_line.sh
 .moai/memory/
 .moai/worktrees/
+# session runtime state (auto-generated; keep dir only via .gitkeep)
+.moai/state/*
+!.moai/state/.gitkeep
 
 # ===========================================
 # Evolution Telemetry (local-only usage data)
