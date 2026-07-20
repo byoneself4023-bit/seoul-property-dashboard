@@ -184,6 +184,10 @@ secret-*.*
 # session runtime state (auto-generated; keep dir only via .gitkeep)
 .moai/state/*
 !.moai/state/.gitkeep
+# session runtime telemetry (auto-generated hook logs / summaries)
+.moai/harness/
+.moai/lessons-inbox.jsonl
+.moai/reports/session-*.md
 
 # ===========================================
 # Evolution Telemetry (local-only usage data)
