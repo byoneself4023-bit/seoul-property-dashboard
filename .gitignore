@@ -221,10 +221,3 @@ data.json
 # RTMS Ingest Cache (로컬 API 응답 캐시)
 # ===========================================
 .cache/
-# ===========================================
-# Newsletter 파이프라인 런타임 출력 (커밋 제외)
-# ===========================================
-# 생성된 뉴스레터 HTML/JSON (날짜별 런타임 산출물)
-newsletter/output/
-# node_modules (newsletter 서브패키지)
-newsletter/node_modules/
