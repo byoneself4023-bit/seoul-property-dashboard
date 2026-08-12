@@ -1,9 +1,5 @@
 # ============================================
-# MoAI-ADK Package Distribution .gitignore
-# ============================================
-# Version: 0.33.0
-# Updated: 2026-01-10
-# Purpose: Essential patterns for user projects
+# seoul-property-dashboard .gitignore
 # ============================================
 
 # ===========================================
@@ -113,7 +109,6 @@ logs/
 # ===========================================
 # Backups
 # ===========================================
-.moai-backups/
 *.backup/
 *-backup/
 *_backup_*/
@@ -174,27 +169,6 @@ secret-*.*
 .claude/skills/*/*/*token*
 # Re-include legitimate skill module files containing "token" in their name
 !.claude/skills/*/modules/*token*.md
-
-# ===========================================
-# Local-Only Files (never sync via git pull)
-# ===========================================
-.moai/status_line.sh
-.moai/memory/
-.moai/worktrees/
-# session runtime state (auto-generated; keep dir only via .gitkeep)
-.moai/state/*
-!.moai/state/.gitkeep
-# session runtime telemetry (auto-generated hook logs / summaries)
-.moai/harness/
-.moai/lessons-inbox.jsonl
-.moai/reports/session-*.md
-
-# ===========================================
-# Evolution Telemetry (local-only usage data)
-# Learnings and new-skills are git-tracked for team sharing.
-# ===========================================
-.moai/evolution/telemetry/*.jsonl
-!.moai/evolution/telemetry/.gitkeep
 
 # ===========================================
 # Node.js (for docs/Nextra)
