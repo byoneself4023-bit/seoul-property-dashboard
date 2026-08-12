@@ -64,9 +64,7 @@ cp "$SRC" "$DEST"
 git -C "$CACHE_DIR" add index.html
 git -C "$CACHE_DIR" \
   -c user.name="쿠카" -c user.email="223078465+byoneself4023-bit@users.noreply.github.com" \
-  commit -q -m "chore: 대시보드 갱신 — 수집일 ${DATA_DATE} (원본 ${SRC_HASH})
-
-🗿 MoAI <email@mo.ai.kr>" || fail "commit 실패"
+  commit -q -m "chore: 대시보드 갱신 — 수집일 ${DATA_DATE} (원본 ${SRC_HASH})" || fail "commit 실패"
 git -C "$CACHE_DIR" push -q origin main || fail "push 실패 (gh 인증 확인)"
 log "푸시 완료 — 수집일 ${DATA_DATE}, 원본 ${SRC_HASH}"
 
