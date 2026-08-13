@@ -70,10 +70,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # 진단용: 액션이 기본으로 Claude 의 실제 오류 문구를 감춘다.
-          # 원인이 잡히면 show_full_output 과 --debug 는 뺀다.
+          # CI 전용 설정. 로컬 .claude/settings.json 의 ask 규칙은 CI 에서
+          # 물어볼 사람이 없어 곧 거부가 된다. 훅 3개는 이 파일에도 그대로 실려
+          # 방어선은 유지된다.
+          settings: .github/claude-ci-settings.json
+          # 진단용 — 원인이 잡히면 뺀다.
           show_full_output: true
           claude_args: |
-            --max-turns 20
+            --max-turns 30
             --model claude-sonnet-5
-            --debug
