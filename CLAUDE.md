@@ -12,7 +12,9 @@
   - `data.js` — 화면이 읽는 데이터. `window.__DASHBOARD_DATA__` 전역에 담긴다
   - `data.json` — 동일 내용의 표준 JSON. 다른 프로그램용 중간 재료 (gitignored)
   - `.cache/ingest/` — API 원본 응답 캐시 (gitignored, 백업 없음)
-  - `scripts/` — `run-ingest.sh`(launchd 래퍼) → `deploy.sh`(Pages 배포)
+  - `scripts/` — `run-ingest.sh`(launchd 래퍼) → `deploy.sh`(origin 에 커밋·푸시)
+- `.github/workflows/` — `pages.yml`(푸시되면 두 파일만 Pages 로 발행),
+  `freshness.yml`(매일 라이브 수집일을 확인, 10일 넘으면 실패 + 이슈 생성)
   - `docs/실데이터_연동_가이드.md` — 운영 문서
 - `docs/` — 기술 조사·작업 기록. 사업·기획 문서는 여기 넣지 않는다(아래 참조)
 
@@ -22,7 +24,7 @@
 node dashboard/ingest.mjs            # 수집 (캐시 활용). RTMS_SERVICE_KEY 필요
 node dashboard/ingest.mjs --fresh    # 캐시 무시 전체 재수집
 node dashboard/ingest.mjs --selftest # 픽스처로 파이프라인 검증
-sh dashboard/scripts/deploy.sh       # 배포만 단독 실행 (gh 인증 필요)
+sh dashboard/scripts/deploy.sh       # 두 파일 커밋·푸시 후 라이브 반영 검증
 npm run verify                       # puppeteer UI 품질 게이트
 ```
 
@@ -35,7 +37,10 @@ npm run verify                       # puppeteer UI 품질 게이트
   `?v=`는 `data.js` 내용의 sha256 앞 8자로 `inject()`가 자동 갱신한다(브라우저가 낡은
   데이터를 쓰는 것을 막는다). 손으로 고치지 말 것 — 다음 수집이 덮어쓴다.
 - `dashboard.html`과 `data.js`는 **항상 함께** 다룬다(배포·전달·커밋). 하나만 최신이면
-  화면과 데이터가 어긋난다. `deploy.sh`가 두 파일을 함께 올리고 각각 라이브 검증한다.
+  화면과 데이터가 어긋난다. `deploy.sh`가 두 파일을 함께 올리고 각각 라이브 검증하며,
+  `pages.yml`도 발행 전에 둘 다 있는지 점검한다.
+- 배포는 **자기 저장소 Pages**다. 별도 배포 저장소도, 토큰도 없다. `main`에 푸시하면
+  `pages.yml`이 두 파일만 `_site/`로 조립해 발행한다(저장소 전체가 서빙되지 않는다).
 - 대시보드를 남에게 줄 때는 **파일이 아니라 라이브 링크**를 준다. 단일 파일 전달
   모델은 2026-08-12 데이터 분리로 폐기했다.
 - `.cache/ingest/` — 443,363건 원본이 이 맥에만 있다. 지우면 5,500회 재수집이 필요하다.

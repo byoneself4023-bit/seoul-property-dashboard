@@ -1,0 +1,90 @@
+# 데이터 신선도 감시 — "아무 일도 안 일어남"을 "명시적 실패"로 바꾼다.
+#
+# 2026-07-13 이후 4주간 수집이 멈췄는데 아무도 몰랐다. 원인은 알림 부재가 아니라
+# **돌지 않은 작업은 실패하지도 않는다**는 데 있다. 수집 워크플로가 죽으면 실패
+# 알림도 안 온다. 그래서 수집과 독립된 이 감시가 매일 라이브를 직접 확인한다.
+#
+# 공개 저장소는 60일간 활동이 없으면 스케줄 워크플로가 자동 비활성화된다.
+# 이 감시가 매일 돌면서 이슈를 만들면 그 전에 사람이 알아챈다.
+name: 데이터 신선도 감시
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # UTC 00:00 = KST 09:00 매일
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  MAX_AGE_DAYS: 10        # 주 1회 수집이므로 10일 넘으면 2회 이상 걸렀다는 뜻
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 라이브 확인
+        id: check
+        run: |
+          set -uo pipefail
+          BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          echo "확인 대상: $BASE"
+          fail() { echo "REASON=$*" >> "$GITHUB_OUTPUT"; echo "실패: $*"; exit 1; }
+
+          code=$(curl -sS -o index.html -w '%{http_code}' -L --max-time 30 "$BASE/") || fail "화면 요청 실패"
+          [ "$code" = 200 ] || fail "화면이 HTTP $code (200 아님)"
+
+          code=$(curl -sS -o data.js -w '%{http_code}' -L --max-time 60 "$BASE/data.js") || fail "데이터 요청 실패"
+          [ "$code" = 200 ] || fail "data.js 가 HTTP $code — 화면이 목데이터로 뜬다"
+
+          gen=$(grep -oE '"generatedAt"[[:space:]]*:[[:space:]]*"[0-9]{4}-[0-9]{2}-[0-9]{2}' data.js \
+                | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+          [ -n "$gen" ] || fail "data.js 에서 generatedAt 을 못 읽었다"
+
+          age=$(( ( $(date -u +%s) - $(date -u -d "$gen" +%s) ) / 86400 ))
+          echo "수집일 $gen — ${age}일 경과 (상한 ${MAX_AGE_DAYS}일)"
+          echo "GENERATED=$gen" >> "$GITHUB_OUTPUT"
+          echo "AGE=$age"       >> "$GITHUB_OUTPUT"
+          [ "$age" -le "$MAX_AGE_DAYS" ] || fail "데이터가 ${age}일 낡았다 (수집일 $gen). 수집이 멈춘 것으로 보인다"
+
+          echo "정상 — 수집일 $gen, ${age}일 경과"
+
+      # 메일은 묻힌다. 이슈는 저장소를 열면 보인다.
+      # 같은 이슈가 매일 쌓이지 않게 열린 것이 있으면 만들지 않는다.
+      - name: 실패 시 이슈 생성
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REASON: ${{ steps.check.outputs.REASON }}
+          GENERATED: ${{ steps.check.outputs.GENERATED }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          gh label create 데이터-정지 --color B60205 \
+            --description "라이브 데이터가 갱신되지 않음" 2>/dev/null || true
+
+          open=$(gh issue list --state open --label 데이터-정지 --json number --jq 'length')
+          if [ "${open:-0}" -gt 0 ]; then
+            echo "이미 열린 이슈가 있다 — 새로 만들지 않는다"
+            exit 0
+          fi
+
+          gh issue create \
+            --title "라이브 데이터가 갱신되지 않고 있다" \
+            --label 데이터-정지 \
+            --body "$(printf '%s\n' \
+              "신선도 감시가 실패했다." \
+              "" \
+              "- 사유: ${REASON:-확인 필요}" \
+              "- 마지막 수집일: ${GENERATED:-읽지 못함}" \
+              "- 실행 로그: ${RUN_URL}" \
+              "" \
+              "## 확인 순서" \
+              "" \
+              "1. 로컬 launchd 가 살아 있는지 — \`launchctl list | grep dashboard-ingest\`" \
+              "2. 수집 로그 — \`dashboard/logs/ingest-launchd.log\`" \
+              "3. 수집 수동 실행 — \`node dashboard/ingest.mjs\` 후 \`sh dashboard/scripts/deploy.sh\`" \
+              "4. 발행 워크플로 — Actions 탭의 '대시보드 발행'" \
+              "" \
+              "고쳐서 라이브가 갱신되면 이 이슈를 닫는다. 열려 있는 동안은 중복 생성되지 않는다.")"
