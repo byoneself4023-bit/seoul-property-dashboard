@@ -8,8 +8,9 @@
 
 - `dashboard/` — 제품 전체
   - `ingest.mjs` — 수집·집계·주입. API 4종(apt/rh/sh/offi) × 25구 × 2022-01~현재
-  - `dashboard.html` — 산출물. Chart.js와 Tailwind가 인라인된 자기완결형 단일 파일
-  - `data.json` — 집계 결과 (gitignored)
+  - `dashboard.html` — 화면 코드. Chart.js와 Tailwind는 인라인(CDN 의존 없음), 데이터는 분리
+  - `data.js` — 화면이 읽는 데이터. `window.__DASHBOARD_DATA__` 전역에 담긴다
+  - `data.json` — 동일 내용의 표준 JSON. 다른 프로그램용 중간 재료 (gitignored)
   - `.cache/ingest/` — API 원본 응답 캐시 (gitignored, 백업 없음)
   - `scripts/` — `run-ingest.sh`(launchd 래퍼) → `deploy.sh`(Pages 배포)
   - `docs/실데이터_연동_가이드.md` — 운영 문서
@@ -29,8 +30,14 @@ npm run verify                       # puppeteer UI 품질 게이트
 
 ## 손대면 안 되는 것
 
-- `dashboard.html`의 `<script type="application/json" id="real-data">` 슬롯 —
-  `ingest.mjs`의 `inject()`가 정규식으로 찾는다. 태그가 바뀌면 수집이 실패한다.
+- `dashboard.html`의 `<script src="data.js?v=...">` 참조 — `ingest.mjs`의 `inject()`가
+  존재를 검사한다. 지우면 수집이 실패하고, 남아 있어도 파일이 없으면 목데이터로 뜬다.
+  `?v=`는 `data.js` 내용의 sha256 앞 8자로 `inject()`가 자동 갱신한다(브라우저가 낡은
+  데이터를 쓰는 것을 막는다). 손으로 고치지 말 것 — 다음 수집이 덮어쓴다.
+- `dashboard.html`과 `data.js`는 **항상 함께** 다룬다(배포·전달·커밋). 하나만 최신이면
+  화면과 데이터가 어긋난다. `deploy.sh`가 두 파일을 함께 올리고 각각 라이브 검증한다.
+- 대시보드를 남에게 줄 때는 **파일이 아니라 라이브 링크**를 준다. 단일 파일 전달
+  모델은 2026-08-12 데이터 분리로 폐기했다.
 - `.cache/ingest/` — 443,363건 원본이 이 맥에만 있다. 지우면 5,500회 재수집이 필요하다.
 - `.env`의 `RTMS_SERVICE_KEY` — 커밋 금지. 이 저장소는 원격이 없고 public이면 안 된다.
 - 캐시 스키마를 바꿀 때는 `cacheSave()`의 `schemaVersion`을 올린다. 그래야 전량 재수집된다.
