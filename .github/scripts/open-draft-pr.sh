@@ -13,13 +13,37 @@ set -uo pipefail
 : "${BRANCH:?BRANCH 가 필요하다}"
 : "${GH_TOKEN:?GH_TOKEN 이 필요하다}"
 
-# 이미 열린 PR 이 있으면 새로 만들지 않는다 — 같은 브랜치에 커밋이 추가될 때마다
-# PR 이 쌓이는 것을 막는다.
+ISSUE="${ISSUE:-$(printf '%s' "$BRANCH" | sed -n 's|^claude/issue-\([0-9][0-9]*\)-.*|\1|p')}"
+
+# ── 중복 방지 1: 같은 브랜치 ──────────────────────────────────
+# 같은 브랜치에 커밋이 추가될 때마다 PR 이 쌓이는 것을 막는다.
 open_prs=$(gh pr list --head "$BRANCH" --state open --json number --jq 'length' 2>/dev/null || echo 0)
 if [ "${open_prs:-0}" -gt 0 ]; then
-  echo "이미 열린 PR 이 있다 — 새로 만들지 않는다:"
+  echo "이 브랜치에 이미 열린 PR 이 있다 — 새로 만들지 않는다:"
   gh pr list --head "$BRANCH" --state open --json number,url --jq '.[] | "  #\(.number)  \(.url)"'
   exit 0
+fi
+
+# ── 중복 방지 2: 같은 이슈 ───────────────────────────────────
+# 에이전트를 다시 호출하면 새 브랜치(claude/issue-<N>-<새 타임스탬프>)가 생긴다.
+# 브랜치 단위로만 막으면 같은 이슈의 PR 이 계속 쌓인다. 이슈 단위로 묶어,
+# 열린 PR 이 있으면 새로 만들지 않고 그 PR 에 새 브랜치를 알린다.
+if [ -n "$ISSUE" ]; then
+  EXISTING=$(gh pr list --state open --json number,headRefName \
+    --jq "[.[] | select(.headRefName | startswith(\"claude/issue-${ISSUE}-\"))] | .[0].number" 2>/dev/null)
+  if [ -n "${EXISTING:-}" ] && [ "$EXISTING" != "null" ]; then
+    echo "이슈 #${ISSUE} 에 이미 열린 PR #${EXISTING} 가 있다 — 새로 만들지 않고 알린다"
+    REPO_URL=$(gh repo view --json url --jq .url)
+    gh pr comment "$EXISTING" --body "$(printf '%s\n' \
+      "에이전트가 이슈 #${ISSUE} 를 다시 실행해 새 브랜치 \`${BRANCH}\` 를 올렸다." \
+      "" \
+      "이 PR 은 그대로 두고 새 PR 을 만들지 않았다(같은 이슈의 PR 이 쌓이는 것을 막는다)." \
+      "새 브랜치 쪽 결과를 쓰려면 이 PR 을 닫고 아래로 새로 열면 된다." \
+      "" \
+      "[새 브랜치 비교](${REPO_URL}/compare/main...${BRANCH})")"
+    gh pr view "$EXISTING" --json number,url --jq '"결과: 기존 PR #\(.number)  \(.url)"'
+    exit 0
+  fi
 fi
 
 git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" 2>/dev/null || true
@@ -29,7 +53,6 @@ if [ "$AHEAD" -eq 0 ]; then
   exit 0
 fi
 
-ISSUE="${ISSUE:-$(printf '%s' "$BRANCH" | sed -n 's|^claude/issue-\([0-9][0-9]*\)-.*|\1|p')}"
 TITLE=$(git log -1 --format=%s "origin/$BRANCH")
 CHANGED=$(git diff --stat "origin/main..origin/$BRANCH")
 
