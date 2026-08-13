@@ -1,0 +1,61 @@
+# 대시보드 발행 — dashboard/ 의 두 파일만 GitHub Pages 로 올린다.
+# 저장소 전체가 서빙되지 않도록 배포물을 _site/ 에 따로 조립해서 올린다.
+name: 대시보드 발행
+
+# 화면·데이터가 바뀐 push 에서만 돈다. 문서만 고친 커밋은 배포를 트리거하지 않는다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/dashboard.html'
+      - 'dashboard/data.js'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시에 두 배포가 돌면 나중 것이 이길지 알 수 없다. 하나씩 처리하되
+# 진행 중인 배포는 취소하지 않는다(반쯤 올라간 상태를 만들지 않기 위해).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 저장소에는 소스가 다 있지만 발행하는 것은 화면과 데이터 두 개뿐이다.
+      # dashboard.html → index.html 개명도 여기서 한다. 저장소의 파일명을 바꾸면
+      # ingest.mjs 의 inject() 가 깨지므로 원본은 건드리지 않는다.
+      - name: 배포물 조립
+        run: |
+          mkdir -p _site
+          cp dashboard/dashboard.html _site/index.html
+          cp dashboard/data.js        _site/data.js
+
+      # 두 파일은 항상 함께 올라가야 한다. 하나만 최신이면 화면과 숫자가 어긋난다.
+      - name: 발행 전 점검
+        run: |
+          set -eu
+          test -s _site/index.html || { echo "index.html 이 비었다"; exit 1; }
+          test -s _site/data.js    || { echo "data.js 가 비었다"; exit 1; }
+          grep -q 'src="data.js' _site/index.html \
+            || { echo "index.html 에 data.js 참조가 없다 — 목데이터로 뜬다"; exit 1; }
+          grep -q '__DASHBOARD_DATA__' _site/data.js \
+            || { echo "data.js 에 전역 할당이 없다"; exit 1; }
+          echo "수집일: $(grep -oE '\"generatedAt\"[[:space:]]*:[[:space:]]*\"[0-9-]{10}' _site/data.js | head -1)"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
