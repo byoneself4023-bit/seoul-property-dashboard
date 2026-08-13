@@ -1,0 +1,51 @@
+# 품질 게이트 — 러너에서 npm run verify(puppeteer)가 실제로 도는지 보장한다.
+#
+# 이게 러너에서 통과하지 못하면 Stop 훅의 검증도 러너에서 무의미하다.
+# 그래서 에이전트 워크플로와 별개로 독립 실행할 수 있게 두고, PR 에도 붙인다.
+name: 품질 게이트
+
+on:
+  pull_request:
+    paths:
+      - 'dashboard/dashboard.html'
+      - 'dashboard/data.js'
+      - 'dashboard/verify-quality.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      # 로컬과 맞춘다(로컬 v25.1.0). 메이저를 고정하고 패치는 러너에 맡긴다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+
+      # puppeteer 가 postinstall 에서 Chrome for Testing 을 내려받는다.
+      # 러너에 크롬이 기본 설치돼 있지 않으므로 이 단계가 곧 크롬 설치다.
+      - name: 의존성 설치 (puppeteer + Chrome)
+        run: npm ci
+
+      - name: 크롬 실제 존재 확인
+        run: |
+          set -eu
+          node -e "const p=require('puppeteer');console.log('executablePath:',p.executablePath())"
+          test -x "$(node -e "console.log(require('puppeteer').executablePath())")" \
+            || { echo "크롬 실행파일이 없다"; exit 1; }
+
+      - name: 품질 게이트 실행
+        run: npm run verify
