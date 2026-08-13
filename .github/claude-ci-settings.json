@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "$comment": "CI 전용 설정. .claude/settings.json 은 사람이 앉아 있는 로컬용이라 ask 규칙이 있는데, CI 에는 물어볼 사람이 없어 ask 가 곧 거부가 된다. 여기서는 ask 를 두지 않고 필요한 것만 allow, 위험한 것은 deny 로 못박는다. 훅 3개는 .claude/settings.json 과 동일하게 싣는다 — 방어선은 그대로 유지한다.",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(gh api:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git mv:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(tr:*)",
+      "Bash(node --check:*)",
+      "Bash(node dashboard/ingest.mjs --selftest)",
+      "Bash(npm ci)",
+      "Bash(npm run verify)",
+      "Bash(sh -n:*)",
+      "Bash(bash -n:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Write(./.env)",
+      "Edit(./.env)",
+      "Grep(./.env)",
+      "Glob(./.env)",
+      "Read(./dashboard/.cache/**)",
+      "Write(./dashboard/.cache/**)",
+      "Edit(./dashboard/.cache/**)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git filter-repo:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(sh dashboard/scripts/deploy.sh:*)",
+      "Bash(dashboard/scripts/deploy.sh:*)",
+      "Bash(sh dashboard/scripts/run-ingest.sh:*)",
+      "Bash(dashboard/scripts/run-ingest.sh:*)",
+      "Bash(node dashboard/ingest.mjs)",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-secrets.sh\"",
+            "timeout": 15,
+            "statusMessage": "비밀값 검사"
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-destructive.sh\"",
+            "timeout": 15,
+            "statusMessage": "되돌릴 수 없는 작업 검사"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-gate.sh\"",
+            "timeout": 300,
+            "statusMessage": "검증 게이트"
+          }
+        ]
+      }
+    ]
+  }
+}
