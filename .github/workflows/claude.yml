@@ -1,0 +1,69 @@
+# 에이전트 — 이슈·PR 코멘트에 @claude 를 언급하면 조사·구현해서 PR 을 올린다.
+#
+# 인증은 ANTHROPIC_API_KEY 시크릿(콘솔 API 키)을 쓴다.
+# 구독 계정 OAuth 토큰(sk-ant-oat…)은 CI 에서 거부되는 사례가 많아 쓰지 않는다.
+#
+# 방어선: 이 저장소의 .claude/settings.json 이 프로젝트 설정으로 자동 로드되므로
+# 훅 3개(block-secrets / guard-destructive / verify-gate)가 러너에서도 걸린다.
+# 비공개 저장소는 GitHub 시크릿 스캐닝이 유료라 이 훅이 유일한 자동 방어선이다.
+name: 에이전트
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    # 러너를 띄우기 전에 @claude 언급 여부를 먼저 거른다.
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+
+    # 실행 상한. 폭주하면 여기서 끊긴다.
+    timeout-minutes: 30
+
+    # 이슈를 여러 개 던져도 같은 이슈/PR 에 대해서는 하나씩 처리한다.
+    # 진행 중인 작업은 취소하지 않는다 — 반쯤 만든 PR 을 남기지 않기 위해.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: write        # 브랜치 생성·커밋
+      pull-requests: write   # PR 생성
+      issues: write          # 이슈에 진행 상황 코멘트
+      id-token: write        # 액션의 기본 GitHub App 인증에 필요
+      actions: read          # PR 의 CI 결과를 읽기 위해
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # 에이전트가 검증(npm run verify)을 돌릴 수 있어야 한다.
+      # verify.yml 과 같은 구성 — 러너에 크롬이 기본 설치돼 있지 않으므로
+      # npm ci 로 puppeteer 가 Chrome for Testing 을 내려받게 한다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+
+      - name: 의존성 설치 (puppeteer + Chrome)
+        run: npm ci
+
+      - name: 에이전트 실행
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --max-turns 20
+            --model claude-sonnet-5
