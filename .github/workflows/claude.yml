@@ -75,8 +75,6 @@ jobs:
           # 물어볼 사람이 없어 곧 거부가 된다. 훅 3개는 이 파일에도 그대로 실려
           # 방어선은 유지된다.
           settings: .github/claude-ci-settings.json
-          # 진단용 — 원인이 잡히면 뺀다.
-          show_full_output: true
           claude_args: |
             --max-turns 30
             --model claude-sonnet-5
