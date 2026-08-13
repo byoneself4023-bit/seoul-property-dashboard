@@ -1,0 +1,116 @@
+# 데이터 수집 — RTMS 실거래가 API 에서 받아 집계하고 저장소에 반영한다.
+#
+# 2026-08-13 이관: 그전까지는 이 맥의 launchd(com.kuka.dashboard-ingest)가 돌렸다.
+# 맥이 꺼져 있으면 수집이 통째로 멈추는데, 돌지 않은 작업은 실패하지도 않아
+# 4주 동안 아무도 몰랐다. 러너로 옮겨 맥의 상태와 무관하게 돌게 한다.
+#
+# 캐시(.cache/ingest)는 저장소에 있다. 러너가 매번 전량(5,600회) 재수집하지
+# 않게 하고, 로컬과 러너가 같은 캐시를 보게 하기 위해서다 — 정본은 origin/main 이다.
+# 최근 두 달(직전 완료월 + 당월)은 신고 지연 때문에 ingest.mjs 의 recentYmds 가
+# 이미 캐시를 무시하고 다시 받는다. 워크플로가 따로 할 일은 없다.
+name: 데이터 수집
+
+on:
+  schedule:
+    # 한국시간 월요일 07:00 = UTC 일요일 22:00 (KST = UTC+9, 서머타임 없음)
+    - cron: '0 22 * * 0'
+  workflow_dispatch:
+    inputs:
+      fresh:
+        description: '캐시를 무시하고 전량 재수집한다 (API 5,600회 — 평소에는 끄고 둘 것)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# 수집이 겹치면 같은 캐시 파일을 양쪽이 고쳐 결과를 알 수 없게 된다.
+# 진행 중인 수집은 취소하지 않는다 — 반쯤 쓰인 캐시를 남기지 않기 위해.
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # ingest.mjs 는 의존성이 없다(내장 fetch 만 쓴다). npm ci 를 하지 않는다.
+
+      # 실패하면 여기서 잡이 끝난다 — 아래 커밋 단계는 돌지 않는다.
+      # 키는 Secrets 에서 환경변수로만 넘긴다. 명령줄에 쓰지 않는다(ps 노출 방지).
+      # ingest.mjs 는 오류 메시지에 URL 을 넣지 않으므로 키가 로그에 찍히지 않고,
+      # GitHub 도 Secrets 값을 로그에서 자동으로 가린다.
+      - name: 수집 실행
+        env:
+          RTMS_SERVICE_KEY: ${{ secrets.RTMS_SERVICE_KEY }}
+        run: |
+          if [ "${{ inputs.fresh }}" = "true" ]; then
+            echo "::warning::전량 재수집 모드 — API 5,600회"
+            node dashboard/ingest.mjs --fresh
+          else
+            node dashboard/ingest.mjs
+          fi
+
+      - name: 변경 확인
+        id: diff
+        run: |
+          # data.json 은 gitignored 다. 화면·데이터·캐시 셋만 본다.
+          git add dashboard/dashboard.html dashboard/data.js dashboard/.cache/ingest
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "변경 없음 — 반영할 것이 없다"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "파일 $(git diff --cached --name-only | wc -l | tr -d ' ')개 변경"
+            git diff --cached --stat -- dashboard/dashboard.html dashboard/data.js
+          fi
+
+      # main 은 ruleset 으로 보호돼 있어 PR 없이는 push 할 수 없고,
+      # GITHUB_TOKEN 은 bypass 대상(Repository admin)이 아니다.
+      # 그렇다고 Actions 를 bypass 에 넣으면 @claude 에이전트도 main 에 직접
+      # push 할 수 있게 된다. 그래서 보호는 그대로 두고 규칙대로 PR 로 들어간다.
+      # 요구 승인이 0건이라 승인 없이 병합된다.
+      - name: PR 로 반영
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="ingest/$(date -u +%Y%m%d-%H%M%S)"
+          DATE=$(grep -oE '"generatedAt"[[:space:]]*:[[:space:]]*"[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+                   dashboard/data.js | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+          [ -n "$DATE" ] || { echo "generatedAt 추출 실패 — data.js 확인"; exit 1; }
+
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git commit -m "data: 수집 $DATE" \
+                     -m "GitHub Actions 자동 수집 (실행 ${{ github.run_id }})."
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "data: 수집 $DATE" \
+            --body "$(printf '%s\n' \
+              '자동 수집 결과다. 요구 승인이 0건이라 승인 없이 병합된다.' \
+              '' \
+              '병합되면 `pages.yml` 이 `dashboard.html`·`data.js` 두 개만 발행한다.' \
+              '' \
+              "실행: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"
+
+          # squash 로 합쳐 main 이력에 수집 커밋 하나만 남긴다.
+          gh pr merge "$BRANCH" --squash --delete-branch
+
+      - name: 결과
+        if: always()
+        run: |
+          if [ "${{ steps.diff.outputs.changed }}" = "false" ]; then
+            echo "수집은 됐으나 바뀐 데이터가 없다 — 발행하지 않는다"
+          fi
