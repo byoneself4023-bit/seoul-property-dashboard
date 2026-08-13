@@ -15,14 +15,18 @@ script 태그를 쓰는 이유는 `file://`로 열어도 동작하게 하기 위
   - `dashboard.html` — 화면. Chart.js와 Tailwind는 인라인(CDN 의존 없음)
   - `data.js` — 화면이 읽는 데이터. `window.__DASHBOARD_DATA__` 전역. `inject()`가 생성
   - `data.json` — 같은 내용의 표준 JSON. 다른 프로그램용 중간 재료 (gitignored)
-  - `.cache/ingest/` — API 원본 응답 캐시 (gitignored, 백업 없음)
+  - `.cache/ingest/` — API 원본 응답 캐시 5,600개. **git 추적 대상이다**(러너와
+    로컬이 같은 캐시를 봐야 한다)
   - `docs/실데이터_연동_가이드.md` — 운영 문서
-  - `scripts/` — `run-ingest.sh`(launchd 래퍼) → `deploy.sh`(origin 에 커밋·푸시)
+  - `scripts/` — `run-ingest.sh` → `deploy.sh`. **수집 이관 후 평시에는 쓰지 않는다**
+    (아래 규칙 참조). 로컬 디버깅용으로만 남겨 뒀다
 - `.github/workflows/`
   - `pages.yml` — 화면·데이터가 푸시되면 두 파일만 `_site/`에 조립해 Pages로 발행
   - `freshness.yml` — 매일 라이브 수집일 확인, 10일 넘으면 실패 + 이슈 생성
   - `verify.yml` — 러너에서 `npm run verify` 통과 보장
   - `claude.yml` — 이슈·PR의 `@claude` 멘션으로 에이전트 실행
+  - `ingest.yml` — **수집**. 매주 월 07:00 KST(`cron '0 22 * * 0'` UTC) + 수동 실행.
+    성공했고 데이터가 바뀐 경우에만 PR 을 열어 병합하고 발행을 호출한다
 - `.github/claude-ci-settings.json` — CI 전용 permissions. `ask`를 두지 않는다
   (CI엔 물어볼 사람이 없어 ask가 곧 거부가 된다). 훅 3개는 로컬과 동일하게 싣는다
 - `docs/` — 기술 조사·작업 기록. 사업·기획 문서는 넣지 않는다(아래 참조)
@@ -37,7 +41,9 @@ sh dashboard/scripts/deploy.sh       # 두 파일 커밋·푸시 후 라이브 �
 npm run verify                       # puppeteer UI 품질 게이트
 ```
 
-자동 실행: LaunchAgent `com.kuka.dashboard-ingest`, 매주 월 07:00 (`~/Library/LaunchAgents/`).
+자동 실행: **GitHub Actions `ingest.yml`**, 매주 월 07:00 KST. 로컬 LaunchAgent
+`com.kuka.dashboard-ingest`는 2026-08-13 이관과 함께 내렸다(plist 는 `.disabled` 로
+남겨 뒀다 — 되돌리는 법은 `docs/자동화-구축.md`).
 
 ## 손대면 안 되는 것
 
@@ -53,7 +59,12 @@ npm run verify                       # puppeteer UI 품질 게이트
   `pages.yml`이 두 파일만 `_site/`로 조립해 발행한다(저장소 전체가 서빙되지 않는다).
 - 대시보드를 남에게 줄 때는 **파일이 아니라 라이브 링크**를 준다. 단일 파일 전달
   모델은 2026-08-12 데이터 분리로 폐기했다.
-- `.cache/ingest/` — 원본 응답 5,600개 파일이 이 맥에만 있다. 지우면 전량 재수집이다.
+- **수집은 러너가 한다. 로컬 실행은 디버깅용이며 커밋하지 않는다.** 정본은
+  `origin/main` 하나다. 양쪽에서 수집하면 같은 캐시 파일 200개를 두 곳이 고쳐
+  충돌하고, 신고 지연 때문에 과거 월의 값까지 갈라진다. 둘 다 정상 종료하므로
+  어느 쪽이 맞는지 판단할 근거가 없다. 로컬에서 돌렸으면 `git checkout` 으로 되돌린다.
+- `.cache/ingest/` — 원본 응답 5,600개. 지우면 전량 재수집(API 5,600회)이다.
+  이제 git 에 있으므로 실수로 지워도 `git checkout` 으로 돌아온다.
 - **이 저장소는 공개다.** 커밋하는 모든 것이 공개되고, 이력에 한 번 들어가면 재작성
   없이는 못 지운다. `.env`의 키는 당연히 커밋 금지.
 - **사업·기획 문서는 저장소에 넣지 않는다.** 대표 녹취 정리, 서비스 기획서, 특허·IR
