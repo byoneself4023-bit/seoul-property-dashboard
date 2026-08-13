@@ -70,6 +70,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 진단용: 액션이 기본으로 Claude 의 실제 오류 문구를 감춘다.
+          # 원인이 잡히면 show_full_output 과 --debug 는 뺀다.
+          show_full_output: true
           claude_args: |
             --max-turns 20
             --model claude-sonnet-5
+            --debug
