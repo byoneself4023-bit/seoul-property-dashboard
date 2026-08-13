@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,10 +37,28 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ════════════════════════════════════════════════
 //  상수
 // ════════════════════════════════════════════════
-const DELAY_MS  = 200;   // 요청 간 대기 — 일일 한도(10,000건) 방어
+const DELAY_MS  = 200;   // (미사용) 순차 수집 시절의 요청 간 대기 — pace()가 대체
 const PAGE_SIZE = 1000;  // numOfRows
 const MAX_RETRY = 3;     // 지수 백오프 최대 재시도
+
+// ── 요청 페이싱 ────────────────────────────────────
+// 2026-08-12 실측: 제한 대상은 동시 연결 수가 아니라 "요청 간격"이다.
+// 간격 없이 동시에 던지면 동시 4에서도 429가 나지만, 일정 간격으로 흘려보내면
+// 30/s까지 실패 0건이었다(무거운 응답 150회 검증 포함). 한계는 30~40/s 사이.
+// 20/s는 한계 대비 33% 여유를 둔 값 — 5,601회 기준 약 5분.
+const REQ_PER_SEC     = 20;  // 초당 요청 시작 수 상한
+const MAX_CONCURRENT  = 6;   // 동시 in-flight 요청 수 상한
+const COMBO_WORKERS   = 6;   // 콤보 단위 병렬 워커 수
 const CACHE_DIR = join(__dirname, '.cache', 'ingest');
+
+// 캐시 스키마 버전 — 저장(cacheSave)과 유효성 판정(fetchCombo)이 함께 참조한다.
+// 이 값을 올리면 이전 버전 캐시가 전량 무효화되어 자동 재수집된다.
+//   v1: year/month/day 만
+//   v2: + area / amount
+//   v3: + 식별 필드(name, umdNm, jibun, floor, buildYear, aptSeq, houseType,
+//        plottageAr, totalFloorAr) 및 왜곡 거래 식별 필드(cdealType, cdealDay,
+//        dealingGbn, rgstDate) — parseItems 확장. 전부 캐시 계층 전용
+const CACHE_SCHEMA_VERSION = 3;
 
 // 공간 규격 버킷 경계 (전용면적 m²) — 원룸형 ≤40 / 투룸형 40<x≤60 / 쓰리룸+ >60
 const AREA_BUCKETS = { studioMax: 40, twoMax: 60 };
@@ -214,11 +233,74 @@ export function parseTotalCount(xml) {
 }
 
 /**
- * XML 응답에서 <item> 블록을 추출하고 계약 날짜, 전용면적, 거래금액을 파싱한다.
+ * <item> 블록에서 텍스트 태그 하나를 읽는다.
+ * 값이 없거나 공백뿐이면 null. API는 미제공 필드를 공백 1칸으로 주는 경우가 있다
+ * (예: <aptDong> </aptDong>, <cdealDay> </cdealDay>).
+ *
+ * @param {string} block  <item>…</item> 내부
+ * @param {string} tag    태그명
+ * @returns {string|null}
+ */
+function textTag(block, tag) {
+  const m = block.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+  if (!m) return null;
+  const v = m[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')   // amp는 마지막 — 이중 디코딩 방지
+    .trim();
+  return v === '' ? null : v;
+}
+
+/**
+ * <item> 블록에서 수치 태그 하나를 읽는다. 파싱 실패 시 null.
+ *
+ * @param {string} block
+ * @param {string} tag
+ * @returns {number|null}
+ */
+function numTag(block, tag) {
+  const v = textTag(block, tag);
+  if (v === null) return null;
+  const n = parseFloat(v.replace(/,/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * XML 응답에서 <item> 블록을 추출하고 계약 날짜, 전용면적, 거래금액에 더해
+ * 개별 거래를 식별할 수 있는 필드(단지명·법정동·지번·층·건축년도 등)를 파싱한다.
  * resultCode 검사를 포함한다.
  *
+ * ── 계층 경계 (schemaVersion 3) ────────────────────────────────
+ * 여기서 반환하는 확장 필드는 **캐시 계층 전용**이다. `aggregateItems`는
+ * year/month/day/area/amount 5개만 읽으며 확장 필드를 보지 않는다. 따라서
+ * data.json / dashboard.html 의 산출물은 이 확장으로 달라지지 않는다.
+ * 확장 필드를 화면에 노출하려면 buildNormalized 단계에서 별도 집계를 만들어야 한다.
+ *
+ * ── 유형별 제공 현황 (2026-08-12 API 실측) ──────────────────────
+ *   name       apt=aptNm / rh=mhouseNm / offi=offiNm / sh=미제공(null)
+ *   floor      apt·rh·offi 제공 / sh=미제공(null)
+ *   area       apt·rh·offi 제공 / sh=미제공(plottageAr·totalFloorAr로 대체)
+ *   jibun      sh는 마스킹된 값을 준다(예: "6**"). API 원문 그대로 보존한다.
+ *   aptSeq     apt 전용 단지 고유키(예: "11680-3834"). 단지명 변경에 강하다.
+ *   houseType  rh=연립/다세대, sh=단독/다가구. apt·offi 미제공.
+ *   cdealType  4종 모두 제공. 값 'O'=계약해제(표본 3~19%), 그 외 공백.
+ *   cdealDay   4종 모두 제공. cdealType과 세트.
+ *   dealingGbn 4종 모두 제공, 100% 값 있음. '중개거래' | '직거래'.
+ *   rgstDate   **apt·rh만 제공.** sh·offi는 태그 자체가 없어 항상 null.
+ *              → 등기완료 필터를 sh·offi에 적용하면 전량이 걸러진다. 주의.
+ * API가 주지 않는 값은 만들어내지 않고 null로 둔다.
+ *
  * @param {string} xml
- * @returns {{ year: number, month: number, day: number|null, area: number|null, amount: number|null }[]}
+ * @returns {{
+ *   year: number, month: number, day: number|null,
+ *   area: number|null, amount: number|null,
+ *   name: string|null, umdNm: string|null, jibun: string|null,
+ *   floor: number|null, buildYear: number|null, aptSeq: string|null,
+ *   houseType: string|null, plottageAr: number|null, totalFloorAr: number|null,
+ *   cdealType: string|null, cdealDay: string|null,
+ *   dealingGbn: string|null, rgstDate: string|null
+ * }[]}
  */
 export function parseItems(xml) {
   checkResultCode(xml);
@@ -249,11 +331,36 @@ export function parseItems(xml) {
       : null;
 
     items.push({
+      // ── 집계 계층이 읽는 5개 필드 (aggregateItems) ──
       year:   parseInt(yearMatch[1],  10),
       month:  parseInt(monthMatch[1], 10),
       day:    dayMatch ? parseInt(dayMatch[1], 10) : null,
       area:   (area !== null && !isNaN(area))     ? area   : null,
       amount: (amount !== null && !isNaN(amount)) ? amount : null,
+
+      // ── 캐시 계층 전용 식별 필드 (집계·화면은 읽지 않는다) ──
+      // 단지·건물명: 유형마다 태그가 다르다. sh(단독/다가구)는 셋 다 없어 null.
+      name:         textTag(block, 'aptNm') || textTag(block, 'mhouseNm') || textTag(block, 'offiNm'),
+      umdNm:        textTag(block, 'umdNm'),
+      jibun:        textTag(block, 'jibun'),
+      floor:        numTag(block, 'floor'),
+      buildYear:    numTag(block, 'buildYear'),
+      aptSeq:       textTag(block, 'aptSeq'),
+      houseType:    textTag(block, 'houseType'),
+      // sh 전용 면적 대체 필드 — excluUseAr이 없는 유형의 규모 지표
+      plottageAr:   numTag(block, 'plottageAr'),
+      totalFloorAr: numTag(block, 'totalFloorAr'),
+
+      // ── 왜곡 거래 식별 필드 (리포트 집계에서 필터로 쓴다. 이번엔 보존만) ──
+      // cdealType='O' = 계약해제. 해제된 거래도 응답에 그대로 남아 신고가를 왜곡한다.
+      // 2020-02-21 이후 계약분부터 공개. cdealDay는 해제일(YY.MM.DD 문자열).
+      cdealType:    textTag(block, 'cdealType'),
+      cdealDay:     textTag(block, 'cdealDay'),
+      // 직거래는 가족 간 거래 등 특수관계에서 시세와 동떨어질 수 있다.
+      dealingGbn:   textTag(block, 'dealingGbn'),
+      // 소유권이전등기 완료일. 비어 있으면 미확정 거래.
+      // 주의: apt·rh만 제공한다. sh·offi는 태그 자체가 없어 항상 null (§API 실측).
+      rgstDate:     textTag(block, 'rgstDate'),
     });
   }
   return items;
@@ -261,7 +368,11 @@ export function parseItems(xml) {
 
 // ════════════════════════════════════════════════
 //  로컬 캐시 (LAWD_CD + DEAL_YMD + propertyType)
-//  캐시 항목: { totalCount, items: [{year,month,day|null},...] }
+//  캐시 항목: { schemaVersion, totalCount, items: [...] }
+//  items 원소는 집계용 5개 필드(year,month,day,area,amount)에 더해
+//  식별 필드(name,umdNm,jibun,floor,buildYear,aptSeq,houseType,
+//  plottageAr,totalFloorAr)와 왜곡 거래 식별 필드(cdealType,cdealDay,
+//  dealingGbn,rgstDate)를 함께 담는다 — parseItems 참조
 // ════════════════════════════════════════════════
 
 function cacheKey(lawdCd, dealYmd, propType) {
@@ -284,8 +395,12 @@ function cacheLoad(lawdCd, dealYmd, propType) {
 
 function cacheSave(lawdCd, dealYmd, propType, data) {
   mkdirSync(CACHE_DIR, { recursive: true });
-  // schemaVersion: 2 를 함께 저장해 구버전 캐시(v1)와 구분
-  writeFileSync(cachePath(lawdCd, dealYmd, propType), JSON.stringify({ schemaVersion: 2, ...data }), 'utf8');
+  // schemaVersion 을 함께 저장해 구버전 캐시와 구분
+  writeFileSync(
+    cachePath(lawdCd, dealYmd, propType),
+    JSON.stringify({ schemaVersion: CACHE_SCHEMA_VERSION, ...data }),
+    'utf8'
+  );
 }
 
 // ════════════════════════════════════════════════
@@ -347,6 +462,11 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
   }
 
   for (const item of items) {
+    // 계층 경계: 집계는 이 5개만 읽는다. parseItems가 함께 보존하는 식별 필드와
+    // 왜곡 거래 식별 필드(cdealType/cdealDay/dealingGbn/rgstDate)는 캐시 계층
+    // 전용이며 여기서도, data.json에서도 쓰이지 않는다.
+    // 해제 거래(cdealType='O')도 지금은 거래량에 그대로 포함된다 — 기존 집계
+    // 방식을 바꾸지 않기 위한 의도적 선택. 필터는 리포트용 집계에서만 건다.
     const { year, month, day, area, amount } = item;
     const ymKey = `${year}-${String(month).padStart(2, '0')}`;
 
@@ -476,29 +596,58 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
 function inject(normalized) {
   const htmlPath = join(__dirname, 'dashboard.html');
   const jsonPath = join(__dirname, 'data.json');
+  const jsPath   = join(__dirname, 'data.js');
 
-  const html = readFileSync(htmlPath, 'utf8');
   const jsonStr = JSON.stringify(normalized, null, 2);
 
-  const slotRe = /(<script\s+type="application\/json"\s+id="real-data">)([\s\S]*?)(<\/script>)/;
+  // data.js — 화면이 읽는 파일. file:// 에서도 로드되도록 fetch가 아닌 script 태그 방식.
+  const jsStr =
+    '// 자동 생성 파일 — 직접 수정하지 마세요. dashboard/ingest.mjs 의 inject()가 씁니다.\n' +
+    `// 생성: ${normalized.generatedAt}\n` +
+    `window.__DASHBOARD_DATA__ = ${jsonStr};\n`;
 
-  // 슬롯 부재 = 진짜 오류. (내용 유무와 무관하게 슬롯 존재 여부로 판정 — 재실행 멱등)
-  if (!slotRe.test(html)) {
-    throw new Error('#real-data 슬롯을 찾지 못했습니다. dashboard.html을 확인하세요.');
+  // 캐시 버스팅 버전 — data.js 내용의 sha256 앞 8자.
+  // 수집일(generatedAt)이 아니라 내용 해시를 쓰는 이유: 같은 날 재수집·수동 재실행·
+  // 실패 후 재시도로 하루에 여러 번 데이터가 바뀐다(2026-08-12에 실제로 3회).
+  // 날짜 기반이면 그 경우 버전이 그대로라 브라우저가 낡은 data.js를 계속 쓴다.
+  // 내용이 같으면 해시도 같으므로 멱등성은 오히려 더 정확해진다.
+  const version = createHash('sha256').update(jsStr).digest('hex').slice(0, 8);
+
+  // dashboard.html 은 데이터를 담지 않지만(2026-08-12 데이터 분리) 버전 쿼리는 여기 박힌다.
+  // 화면이 data.js 를 로드하지 않는 상태로 어긋나면 수집이 조용히 무의미해지므로,
+  // 참조 존재 여부를 먼저 검사한다. 실패 = 진짜 오류.
+  const html = readFileSync(htmlPath, 'utf8');
+  const srcRe = /(<script\s+src="data\.js)(\?v=[^"]*)?(")/;
+  if (!srcRe.test(html)) {
+    throw new Error(
+      'dashboard.html 에서 <script src="data.js"> 참조를 찾지 못했습니다.\n' +
+      '       화면이 데이터를 로드하지 못하는 상태입니다. dashboard.html을 확인하세요.'
+    );
   }
 
-  const newHtml = html.replace(slotRe, `$1${jsonStr}$3`);
+  // data.json — 동일 내용의 표준 JSON. 리포트 계산·SQLite 전환 등 다른 프로그램용 중간 재료.
   writeFileSync(jsonPath, jsonStr, 'utf8');
 
-  // 데이터 무변경(동일 스냅샷) = 정상 no-op. HTML 갱신 생략.
-  if (newHtml === html) {
-    console.log('[ingest] 데이터 변경 없음 — dashboard.html 갱신 생략 (data.json만 저장)');
-    return;
+  // ── data.js ──
+  // 데이터 무변경(동일 스냅샷) = 정상 no-op.
+  const prevJs = existsSync(jsPath) ? readFileSync(jsPath, 'utf8') : null;
+  if (prevJs === jsStr) {
+    console.log('[ingest] 데이터 변경 없음 — data.js 갱신 생략 (data.json만 저장)');
+  } else {
+    writeFileSync(jsPath, jsStr, 'utf8');
+    console.log(`[ingest] data.js 저장 완료 (generatedAt: ${normalized.generatedAt}, v=${version})`);
+    console.log(`[ingest] data.json 저장 완료`);
   }
 
+  // ── dashboard.html 의 버전 쿼리 ──
+  // 항상 "있어야 할 값"으로 맞춘다(자기 치유). 이미 같으면 파일을 건드리지 않는다.
+  const newHtml = html.replace(srcRe, `$1?v=${version}$3`);
+  if (newHtml === html) {
+    console.log('[ingest] data.js 버전 동일 — dashboard.html 갱신 생략');
+    return;
+  }
   writeFileSync(htmlPath, newHtml, 'utf8');
-  console.log(`[ingest] dashboard.html 주입 완료 (generatedAt: ${normalized.generatedAt})`);
-  console.log(`[ingest] data.json 저장 완료`);
+  console.log(`[ingest] dashboard.html 버전 갱신 완료 (data.js?v=${version})`);
 }
 
 // ════════════════════════════════════════════════
@@ -507,6 +656,68 @@ function inject(normalized) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 요청 페이서 — 모든 HTTP 요청이 여기를 통과한다.
+ * 두 가지를 동시에 강제한다:
+ *   1) 요청 시작 간격이 최소 1000/REQ_PER_SEC ms  (429 회피의 핵심)
+ *   2) 동시 in-flight 요청이 MAX_CONCURRENT 이하  (안전망)
+ * 페이지네이션 추가 요청과 재시도도 전부 이 게이트를 지난다.
+ */
+const pacer = (() => {
+  const minGap = 1000 / REQ_PER_SEC;
+  let nextSlot = 0;   // 다음 요청을 시작해도 되는 시각(ms)
+  let inFlight = 0;
+  const waiters = [];
+
+  function release() {
+    inFlight--;
+    const next = waiters.shift();
+    if (next) { inFlight++; next(); }
+  }
+
+  async function acquire() {
+    // (1) 간격 확보 — 슬롯을 선점해 동시 호출끼리도 겹치지 않게 한다
+    const now = Date.now();
+    const start = Math.max(now, nextSlot);
+    nextSlot = start + minGap;
+    const wait = start - now;
+    if (wait > 0) await sleep(wait);
+
+    // (2) 동시 수 상한
+    if (inFlight >= MAX_CONCURRENT) {
+      await new Promise(resolve => waiters.push(resolve));
+    } else {
+      inFlight++;
+    }
+  }
+
+  return { acquire, release, inFlightNow: () => inFlight };
+})();
+
+/** 페이서를 통과시켜 fn을 실행한다. */
+async function paced(fn) {
+  await pacer.acquire();
+  try { return await fn(); } finally { pacer.release(); }
+}
+
+/**
+ * 작업 목록을 워커 n개로 병렬 처리한다. 결과는 입력 순서를 유지한다.
+ * 개별 작업이 던지면 그대로 전파된다(일일 한도 초과 즉시 중단 경로 보존).
+ */
+async function runPool(items, workers, fn) {
+  const out = new Array(items.length);
+  let idx = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = idx++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(workers, items.length) }, worker));
+  return out;
 }
 
 /**
@@ -551,11 +762,11 @@ async function fetchOnePage(serviceKey, endpoint, lawdCd, dealYmd, pageNo) {
  * @returns {{ items: array, totalCount: number } | null}  null = 실패(계속 진행)
  */
 async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCache, stats) {
-  // 캐시 확인: schemaVersion === 2 인 경우에만 유효한 캐시로 처리
-  // v1 캐시(날짜만 있고 area/amount 없음)는 자동 무효화 → 재수집
+  // 캐시 확인: 현재 스키마 버전과 일치할 때만 유효한 캐시로 처리
+  // 구버전 캐시(v1=날짜만, v2=area/amount까지)는 자동 무효화 → 재수집
   if (useCache) {
     const cached = cacheLoad(lawdCd, dealYmd, propType);
-    if (cached !== null && cached.schemaVersion === 2) {
+    if (cached !== null && cached.schemaVersion === CACHE_SCHEMA_VERSION) {
       stats.hits++;
       stats.hitsByType[propType]++;
       return cached;
@@ -566,7 +777,7 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
   let lastErr;
   for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
     try {
-      await sleep(DELAY_MS);
+      // 요청 간격·동시 수는 pacer가 강제한다 (sleep(DELAY_MS) 대체)
       stats.calls++;
       stats.callsByType[propType]++;
 
@@ -575,15 +786,14 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
       let totalCount = 0;
 
       while (true) {
-        const { items, totalCount: tc } = await fetchOnePage(
+        const { items, totalCount: tc } = await paced(() => fetchOnePage(
           serviceKey, endpoint, lawdCd, dealYmd, pageNo
-        );
+        ));
         if (pageNo === 1) totalCount = tc;
         allItems.push(...items);
 
         if (allItems.length >= totalCount || items.length < PAGE_SIZE) break;
         pageNo++;
-        await sleep(DELAY_MS);
         stats.calls++;
         stats.callsByType[propType]++;
       }
@@ -703,6 +913,31 @@ const FIXTURE_XML_APT_EN = `
       <item><dealYear>2026</dealYear><dealMonth>6</dealMonth></item>
     </items>
     <totalCount>3</totalCount>
+    <pageNo>1</pageNo>
+    <numOfRows>1000</numOfRows>
+  </body>
+</response>
+`;
+
+// 식별 필드(schemaVersion 3) 검증용 — 2026-08-12 라이브 API 응답 실측을 축약한 것.
+// 4유형의 태그 구성 차이를 한 픽스처에 모았다: apt(aptNm/aptSeq/floor),
+// rh(mhouseNm/houseType/landAr), sh(단지명·층·전용면적 없음 + 마스킹된 jibun +
+// plottageAr/totalFloorAr), offi(offiNm). XML 이스케이프(&amp;) 항목도 포함.
+// 왜곡 거래 필드도 실 API 동작을 재현한다: apt=해제(O)+직거래+등기공백,
+// rh=등기완료, sh·offi=rgstDate 태그 자체 없음, offi=자기닫힘 <cdealType/>.
+const FIXTURE_XML_IDENT = `
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<response>
+  <header><resultCode>000</resultCode><resultMsg>OK</resultMsg></header>
+  <body>
+    <items>
+      <item><aptDong>1단지 116</aptDong><aptNm>삼성동힐스테이트 1단지</aptNm><aptSeq>11680-3834</aptSeq><buildYear>2008</buildYear><cdealType>O</cdealType><cdealDay>26.07.24</cdealDay><dealingGbn>직거래</dealingGbn><rgstDate> </rgstDate><dealAmount>140,000</dealAmount><dealDay>19</dealDay><dealMonth>6</dealMonth><dealYear>2026</dealYear><excluUseAr>31.402</excluUseAr><floor>1</floor><jibun>16-2</jibun><sggCd>11680</sggCd><umdCd>10500</umdCd><umdNm>삼성동</umdNm></item>
+      <item><buildYear>2026</buildYear><cdealType> </cdealType><cdealDay> </cdealDay><dealingGbn>중개거래</dealingGbn><rgstDate>26.05.08</rgstDate><dealAmount>77,000</dealAmount><dealDay>19</dealDay><dealMonth>6</dealMonth><dealYear>2026</dealYear><excluUseAr>32.657</excluUseAr><floor>2</floor><houseType>연립</houseType><jibun>1165-4</jibun><landAr>20.541</landAr><mhouseNm>개포라온채</mhouseNm><umdNm>개포동</umdNm></item>
+      <item><buildYear>1991</buildYear><dealingGbn>중개거래</dealingGbn><dealAmount>560,000</dealAmount><dealDay>22</dealDay><dealMonth>6</dealMonth><dealYear>2026</dealYear><houseType>다가구</houseType><jibun>6**</jibun><plottageAr>189.7</plottageAr><totalFloorAr>367.22</totalFloorAr><umdNm>역삼동</umdNm></item>
+      <item><buildYear>1991</buildYear><cdealType/><dealingGbn>직거래</dealingGbn><dealAmount>64,300</dealAmount><dealDay>16</dealDay><dealMonth>6</dealMonth><dealYear>2026</dealYear><excluUseAr>72.96</excluUseAr><floor>10</floor><jibun>702-13</jibun><offiNm>702-13(성지하이츠)</offiNm><sggNm>강남구</sggNm><umdNm>역삼동</umdNm></item>
+      <item><aptNm>래미안A&amp;B</aptNm><aptDong> </aptDong><buildYear>2015</buildYear><dealAmount>90,000</dealAmount><dealDay>3</dealDay><dealMonth>6</dealMonth><dealYear>2026</dealYear><excluUseAr>84.9</excluUseAr><floor>7</floor><jibun> </jibun><umdNm>대치동</umdNm></item>
+    </items>
+    <totalCount>5</totalCount>
     <pageNo>1</pageNo>
     <numOfRows>1000</numOfRows>
   </body>
@@ -954,6 +1189,67 @@ function runSelfTest() {
   let en000ok = true;
   try { checkResultCode(FIXTURE_XML_APT_EN); } catch { en000ok = false; }
   assert('영문 픽스처 resultCode=000 통과', en000ok);
+
+  // ── 2-b. 식별 필드(schemaVersion 3) 파싱 검증 ────────
+  console.log('\n[2-b] 식별 필드 파싱 검증 (캐시 계층 전용)');
+  const idItems = parseItems(FIXTURE_XML_IDENT);
+  assert('식별 픽스처 5건 파싱', idItems.length === 5, `실제: ${idItems.length}`);
+
+  // apt — aptNm / aptSeq / floor / buildYear / jibun / umdNm
+  assert('apt name=aptNm',        idItems[0].name === '삼성동힐스테이트 1단지', `실제: ${idItems[0].name}`);
+  assert('apt aptSeq 보존',        idItems[0].aptSeq === '11680-3834', `실제: ${idItems[0].aptSeq}`);
+  assert('apt umdNm=삼성동',       idItems[0].umdNm === '삼성동', `실제: ${idItems[0].umdNm}`);
+  assert('apt jibun=16-2',        idItems[0].jibun === '16-2', `실제: ${idItems[0].jibun}`);
+  assert('apt floor=1 (숫자)',     idItems[0].floor === 1, `실제: ${idItems[0].floor}`);
+  assert('apt buildYear=2008',    idItems[0].buildYear === 2008, `실제: ${idItems[0].buildYear}`);
+  assert('apt houseType=null',    idItems[0].houseType === null, `실제: ${idItems[0].houseType}`);
+
+  // rh — mhouseNm이 name으로, houseType 보존
+  assert('rh name=mhouseNm',      idItems[1].name === '개포라온채', `실제: ${idItems[1].name}`);
+  assert('rh houseType=연립',      idItems[1].houseType === '연립', `실제: ${idItems[1].houseType}`);
+  assert('rh aptSeq=null',        idItems[1].aptSeq === null, `실제: ${idItems[1].aptSeq}`);
+
+  // sh — 단지명·층·전용면적 없음(만들어내지 않는다) + 마스킹 지번 원문 보존
+  assert('sh name=null (API 미제공)',   idItems[2].name === null, `실제: ${idItems[2].name}`);
+  assert('sh floor=null (API 미제공)',  idItems[2].floor === null, `실제: ${idItems[2].floor}`);
+  assert('sh area=null (excluUseAr 없음)', idItems[2].area === null, `실제: ${idItems[2].area}`);
+  assert('sh jibun 마스킹 원문 보존',    idItems[2].jibun === '6**', `실제: ${idItems[2].jibun}`);
+  assert('sh plottageAr=189.7',        idItems[2].plottageAr === 189.7, `실제: ${idItems[2].plottageAr}`);
+  assert('sh totalFloorAr=367.22',     idItems[2].totalFloorAr === 367.22, `실제: ${idItems[2].totalFloorAr}`);
+  assert('sh houseType=다가구',         idItems[2].houseType === '다가구', `실제: ${idItems[2].houseType}`);
+
+  // offi — offiNm이 name으로
+  assert('offi name=offiNm', idItems[3].name === '702-13(성지하이츠)', `실제: ${idItems[3].name}`);
+  assert('offi plottageAr=null', idItems[3].plottageAr === null, `실제: ${idItems[3].plottageAr}`);
+
+  // XML 엔티티 디코딩 + 공백뿐인 태그는 null
+  assert('&amp; 디코딩',        idItems[4].name === '래미안A&B', `실제: ${idItems[4].name}`);
+  assert('공백뿐인 jibun=null', idItems[4].jibun === null, `실제: ${idItems[4].jibun}`);
+
+  // 왜곡 거래 식별 필드 (리포트 집계용 — 이번엔 보존만)
+  assert('apt cdealType=O (계약해제)',   idItems[0].cdealType === 'O', `실제: ${idItems[0].cdealType}`);
+  assert('apt cdealDay=26.07.24',        idItems[0].cdealDay === '26.07.24', `실제: ${idItems[0].cdealDay}`);
+  assert('apt dealingGbn=직거래',         idItems[0].dealingGbn === '직거래', `실제: ${idItems[0].dealingGbn}`);
+  assert('apt rgstDate 공백→null',        idItems[0].rgstDate === null, `실제: ${idItems[0].rgstDate}`);
+  assert('rh cdealType 공백→null',        idItems[1].cdealType === null, `실제: ${idItems[1].cdealType}`);
+  assert('rh dealingGbn=중개거래',        idItems[1].dealingGbn === '중개거래', `실제: ${idItems[1].dealingGbn}`);
+  assert('rh rgstDate=26.05.08 (등기완료)', idItems[1].rgstDate === '26.05.08', `실제: ${idItems[1].rgstDate}`);
+  // sh·offi는 rgstDate 태그 자체가 없다 — 등기완료 필터를 걸면 전량 제외된다
+  assert('sh rgstDate=null (태그 미제공)',   idItems[2].rgstDate === null, `실제: ${idItems[2].rgstDate}`);
+  assert('offi rgstDate=null (태그 미제공)', idItems[3].rgstDate === null, `실제: ${idItems[3].rgstDate}`);
+  assert('offi 자기닫힘 <cdealType/>→null',  idItems[3].cdealType === null, `실제: ${idItems[3].cdealType}`);
+  assert('offi dealingGbn=직거래',           idItems[3].dealingGbn === '직거래', `실제: ${idItems[3].dealingGbn}`);
+
+  // 계층 경계: 식별 필드가 붙어도 집계 결과는 5개 필드만 보고 계산된다
+  const identAgg = aggregateItems(idItems, ['2026-06'], []);
+  const identStripped = aggregateItems(
+    idItems.map(({ year, month, day, area, amount }) => ({ year, month, day, area, amount })),
+    ['2026-06'], []
+  );
+  assert('계층 경계: 식별·왜곡 필드 유무로 집계가 달라지지 않음',
+    JSON.stringify(identAgg) === JSON.stringify(identStripped));
+  assert('식별 픽스처 2026-06 건수 5', identAgg.monthly[0] === 5,
+    `실제: ${identAgg.monthly[0]}`);
 
   // parseTotalCount 검증
   assert('parseTotalCount APT = 6',
@@ -1317,38 +1613,66 @@ async function main() {
   const rawByDistrict = {};
   const crossCheckData = {};
 
-  try {
-    for (const district of DISTRICTS) {
-      console.log(`[ingest] ${district.name} (${district.code}) 수집 중...`);
-      // 모든 propType 슬롯을 빈 배열로 초기화 (offi 포함)
-      rawByDistrict[district.name] = Object.fromEntries(propTypes.map(t => [t, []]));
+  // 모든 propType 슬롯을 빈 배열로 초기화 (offi 포함)
+  for (const district of DISTRICTS) {
+    rawByDistrict[district.name] = Object.fromEntries(propTypes.map(t => [t, []]));
+  }
 
-      for (const ym of dealYmdList) {
-        for (const [propType, endpoint] of Object.entries(ENDPOINTS)) {
-          // @MX:WARN: [AUTO] 일일 한도 초과 시 즉시 중단 — 재시도 없음
-          // @MX:REASON: resultCode 22는 재시도해도 의미 없음. 캐시로 이어서 가능.
-          // 최근 2개월은 신고 지연 반영 위해 캐시 무시(재수집). cacheSave는 유지되어 스냅샷 갱신.
-          const comboUseCache = useCache && !recentYmdSet.has(ym);
-          const result = await fetchCombo(
-            serviceKey, endpoint, district.code, ym, propType, comboUseCache, stats
-          );
-
-          if (result === null) continue; // 실패 콤보, 건너뜀 (offi 인증오류 포함)
-
-          rawByDistrict[district.name][propType].push(...result.items);
-
-          // 교차검증 데이터 수집
-          const crossKey = `${district.name}_${propType}_${ym}`;
-          crossCheckData[crossKey] = {
-            totalCount:     result.totalCount,
-            collectedCount: result.items.length,
-          };
-        }
+  // 콤보를 평탄한 작업 목록으로 펼쳐 워커 풀에 넘긴다.
+  // 순서는 유지되지만(runPool) 실행은 병렬 — 요청 간격·동시 수는 pacer가 강제한다.
+  const tasks = [];
+  for (const district of DISTRICTS) {
+    for (const ym of dealYmdList) {
+      for (const [propType, endpoint] of Object.entries(ENDPOINTS)) {
+        tasks.push({ district, ym, propType, endpoint });
       }
+    }
+  }
 
+  const progressEvery = 500;
+  let done = 0;
+  const tStart = Date.now();
+
+  try {
+    const results = await runPool(tasks, COMBO_WORKERS, async (t) => {
+      // @MX:WARN: [AUTO] 일일 한도 초과 시 즉시 중단 — 재시도 없음
+      // @MX:REASON: resultCode 22는 재시도해도 의미 없음. 캐시로 이어서 가능.
+      // 최근 2개월은 신고 지연 반영 위해 캐시 무시(재수집). cacheSave는 유지되어 스냅샷 갱신.
+      const comboUseCache = useCache && !recentYmdSet.has(t.ym);
+      const result = await fetchCombo(
+        serviceKey, t.endpoint, t.district.code, t.ym, t.propType, comboUseCache, stats
+      );
+      if (++done % progressEvery === 0) {
+        const el = (Date.now() - tStart) / 1000;
+        const rate = stats.calls / el;
+        console.log(
+          `[ingest] 진행 ${done}/${tasks.length} (${(done / tasks.length * 100).toFixed(0)}%) · ` +
+          `경과 ${el.toFixed(0)}s · 실호출 ${stats.calls}건 (${rate.toFixed(1)}/s) · 실패 ${stats.failures.length}건`
+        );
+      }
+      return result;
+    });
+
+    // 결과 반영은 병렬 구간이 끝난 뒤 순서대로 — 배열 순서가 곧 콤보 순서다
+    for (let i = 0; i < tasks.length; i++) {
+      const result = results[i];
+      if (result === null || result === undefined) continue; // 실패 콤보, 건너뜀 (offi 인증오류 포함)
+      const { district, ym, propType } = tasks[i];
+
+      rawByDistrict[district.name][propType].push(...result.items);
+
+      // 교차검증 데이터 수집
+      const crossKey = `${district.name}_${propType}_${ym}`;
+      crossCheckData[crossKey] = {
+        totalCount:     result.totalCount,
+        collectedCount: result.items.length,
+      };
+    }
+
+    for (const district of DISTRICTS) {
       const d = rawByDistrict[district.name];
       const typeSummary = propTypes.map(t => `${t}: ${d[t].length}건`).join(', ');
-      console.log(`  → ${typeSummary}`);
+      console.log(`[ingest] ${district.name} (${district.code}) → ${typeSummary}`);
     }
   } catch (err) {
     if (err.isQuotaExceeded) {
@@ -1394,7 +1718,7 @@ async function main() {
   console.log('\n[ingest] 집계 중...');
   const normalized = buildNormalized(rawByDistrict, monthPeriods, weekPeriods, generatedAt);
 
-  console.log('[ingest] dashboard.html 및 data.json 저장 중...');
+  console.log('[ingest] data.js 및 data.json 저장 중...');
   inject(normalized);
 
   console.log('[ingest] 완료!');

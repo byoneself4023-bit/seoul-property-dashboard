@@ -1,6 +1,6 @@
 // verify-quality.mjs
 // 품질 게이트 — 수량/밀도 제한(차트·컨트롤 개수, 스크롤 비율)은 요구 갱신으로 폐기하고
-// 진짜 품질 불변식(무효 클래스·콘솔 에러·외부 리소스 규율·모바일 폭 미깨짐)만 PASS/FAIL로 강제한다.
+// 진짜 품질 불변식(무효 클래스·콘솔 에러·원격 리소스 규율·모바일 폭 미깨짐)만 PASS/FAIL로 강제한다.
 // (구 verify-simplicity.mjs에서 개정: 카토그램·타임라인·3모드 등 UI 확장을 허용하기 위함)
 import puppeteer from 'puppeteer';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,15 @@ const r = await page.evaluate(() => ({
   scrollRatio: document.body.scrollHeight / window.innerHeight,
   controls: document.querySelectorAll('button, [role="button"], select, input').length,
   canvases: document.querySelectorAll('canvas').length,
-  externalScripts: [...document.querySelectorAll('script[src], link[rel="stylesheet"][href^="http"]')].length,
+  // 외부(원격) 리소스만 센다 — 로컬 상대경로(data.js 등)는 CDN 의존이 아니므로 제외.
+  // 2026-08-12 데이터 분리로 <script src="data.js"> 가 생겼는데, 이걸 CDN으로 세면
+  // 게이트의 의도("신규 CDN 금지")와 어긋난다.
+  remoteResources: [...document.querySelectorAll('script[src], link[rel="stylesheet"][href]')]
+    .map(el => el.getAttribute('src') || el.getAttribute('href') || '')
+    .filter(v => /^(https?:)?\/\//.test(v)).length,
+  localScripts: [...document.querySelectorAll('script[src]')]
+    .map(el => el.getAttribute('src') || '')
+    .filter(v => !/^(https?:)?\/\//.test(v)),
   invalidClasses: document.body.innerHTML.includes('slate-850') || document.body.innerHTML.includes('min-height-screen'),
 }));
 
@@ -37,7 +45,7 @@ const mobileOk = m.overflowX <= 2; // 2px 반올림 허용
 // 품질 불변식 (PASS/FAIL 강제)
 const checks = {
   '무효 클래스 0건 (slate-850/min-height-screen)': !r.invalidClasses,
-  '외부 리소스 2개 이하 (Tailwind+Chart.js만, 신규 CDN 금지)': r.externalScripts <= 2,
+  '원격 리소스 0건 (CDN 의존 금지 — Tailwind·Chart.js는 인라인 유지)': r.remoteResources === 0,
   '콘솔 에러 0건': errors.length === 0,
   '모바일 폭(≤400px) 가로 미깨짐': mobileOk,
 };
@@ -49,6 +57,7 @@ console.table({
   '컨트롤 수': r.controls,
   '스크롤 비율': Number(r.scrollRatio.toFixed(2)),
   '모바일 가로 오버플로(px)': m.overflowX,
+  '로컬 스크립트': r.localScripts.join(', ') || '(없음)',
 });
 
 console.log('── 품질 게이트 ──');
