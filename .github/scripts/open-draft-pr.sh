@@ -43,10 +43,21 @@ BODY=$(mktemp)
   echo '```'
   echo
   [ -n "$ISSUE" ] && { echo "Closes #$ISSUE"; echo; }
+  echo "## 실행 상태"
+  echo
+  case "${AGENT_RESULT:-}" in
+    success) echo "- 에이전트: 정상 종료" ;;
+    failure) echo "- 에이전트: **실패로 종료** — 커밋은 올라갔으나 작업이 끝까지 갔는지 확인할 것" ;;
+    *)       echo "- 에이전트: ${AGENT_RESULT:-알 수 없음}" ;;
+  esac
+  case "${VERIFY_RESULT:-}" in
+    success) echo "- 품질 게이트: 통과" ;;
+    failure) echo "- 품질 게이트: **실패** — 병합 전 반드시 확인" ;;
+    *)       echo "- 품질 게이트: 건너뜀 (화면·데이터 변경 없음)" ;;
+  esac
+  echo
   echo "## 검토 전 확인"
   echo
-  echo "- 품질 게이트는 화면·데이터(\`dashboard.html\`, \`data.js\`)가 바뀐 경우에만 돈다."
-  echo "  이 PR 에서 돌았는지는 에이전트 실행 로그의 \`품질 게이트 (에이전트 브랜치)\` 단계를 본다"
   echo "- 산출물이 의도 없이 바뀌지 않았는지"
   echo "- \`dashboard.html\` 과 \`data.js\` 는 항상 함께 다룬다 — 하나만 바뀌었으면 의심할 것"
   echo

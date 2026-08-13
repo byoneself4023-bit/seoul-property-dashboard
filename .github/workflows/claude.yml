@@ -67,6 +67,7 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: 에이전트 실행
+        id: agent
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -86,9 +87,13 @@ jobs:
       # GitHub 은 이 봇이 만든 이벤트로 워크플로를 트리거하지 않으므로
       # 브랜치 push 에 반응하는 별도 워크플로는 영영 돌지 않는다.
       # 그래서 검증과 PR 생성을 같은 잡에서 이어서 한다.
+      # 에이전트가 실패로 끝나도(예: 턴 소진) 커밋·푸시는 이미 끝났을 수 있다.
+      # 그 경우 브랜치는 올라가 있으므로 PR 은 만들어져야 한다.
+      # !cancelled() — 성공·실패 모두 돌되 잡이 취소되면 건너뛴다.
+      # 브랜치가 아예 없으면 아래 found=false 로 다음 단계들이 걸러진다.
       - name: 에이전트 브랜치 확인
         id: branch
-        if: success()
+        if: ${{ !cancelled() }}
         env:
           ISSUE: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: |
@@ -116,17 +121,23 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # 화면·데이터가 바뀐 경우에만 브라우저를 띄운다. 문서만 바뀌면 건너뛴다.
+      # 게이트가 실패해도 PR 은 연다 — 실패한 채로 보이는 편이 침묵보다 낫다.
+      # 결과는 PR 본문에 적힌다.
       - name: 품질 게이트 (에이전트 브랜치)
-        if: success() && steps.branch.outputs.found == 'true' && steps.branch.outputs.needs_verify == 'true'
+        id: verify
+        continue-on-error: true
+        if: ${{ !cancelled() && steps.branch.outputs.found == 'true' && steps.branch.outputs.needs_verify == 'true' }}
         run: |
           set -eu
           git checkout -q "origin/${{ steps.branch.outputs.name }}"
           npm run verify
 
       - name: Draft PR 생성
-        if: success() && steps.branch.outputs.found == 'true'
+        if: ${{ !cancelled() && steps.branch.outputs.found == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.branch.outputs.name }}
           ISSUE: ${{ github.event.issue.number || github.event.pull_request.number }}
+          VERIFY_RESULT: ${{ steps.verify.outcome }}
+          AGENT_RESULT: ${{ steps.agent.outcome }}
         run: bash .github/scripts/open-draft-pr.sh
