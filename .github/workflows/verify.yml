@@ -5,6 +5,19 @@
 name: 품질 게이트
 
 on:
+  # GITHUB_TOKEN 으로 만든 PR 은 다른 워크플로를 트리거하지 않는다.
+  # 그래서 PR 생성 주체와 무관하게 브랜치 push 시점에 돌린다 —
+  # 토큰을 따로 들이지 않고 검증을 보장하는 방법이다.
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - 'dashboard/dashboard.html'
+      - 'dashboard/data.js'
+      - 'dashboard/verify-quality.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/verify.yml'
   pull_request:
     paths:
       - 'dashboard/dashboard.html'
