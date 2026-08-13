@@ -199,9 +199,16 @@ dist-ssr/
 data.json
 
 # ===========================================
-# RTMS Ingest Cache (로컬 API 응답 캐시)
+# RTMS Ingest Cache (API 원본 응답)
 # ===========================================
+# dashboard/.cache/ingest 는 추적한다. 수집을 GitHub Actions 로 옮기면서
+# 러너와 로컬이 같은 캐시를 봐야 하기 때문이다(정본 = origin/main).
+# 다른 .cache/ 는 계속 무시한다. 디렉터리가 제외되면 git 이 안으로 들어가지
+# 않으므로, 상위 디렉터리부터 순서대로 되살린다.
 .cache/
+!dashboard/.cache/
+!dashboard/.cache/ingest/
+!dashboard/.cache/ingest/**
 
 # 훅 상태 파일 (검증 재시도 카운터·로그)
 .claude/.state/
