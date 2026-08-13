@@ -40,12 +40,19 @@ jobs:
       - name: 의존성 설치 (puppeteer + Chrome)
         run: npm ci
 
+      # puppeteer 25 의 executablePath() 는 Promise 를 반환한다 — await 해야 경로가 나온다.
       - name: 크롬 실제 존재 확인
         run: |
-          set -eu
-          node -e "const p=require('puppeteer');console.log('executablePath:',p.executablePath())"
-          test -x "$(node -e "console.log(require('puppeteer').executablePath())")" \
-            || { echo "크롬 실행파일이 없다"; exit 1; }
+          node -e "
+          const p = require('puppeteer');
+          const fs = require('node:fs');
+          (async () => {
+            const ep = await p.executablePath();
+            console.log('executablePath:', ep);
+            fs.accessSync(ep, fs.constants.X_OK);
+            console.log('실행 가능 확인 완료');
+          })().catch(e => { console.error('크롬 실행파일 확인 실패:', e.message); process.exit(1); });
+          "
 
       - name: 품질 게이트 실행
         run: npm run verify
