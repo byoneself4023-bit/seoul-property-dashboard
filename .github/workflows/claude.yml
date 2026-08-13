@@ -60,6 +60,12 @@ jobs:
       - name: 의존성 설치 (puppeteer + Chrome)
         run: npm ci
 
+      # Ubuntu 23.10+ 는 AppArmor 로 비특권 user namespace 를 막아 크롬 샌드박스가 뜨지 않는다.
+      # 제품 코드에 --no-sandbox 를 넣는 대신 러너 쪽 제한을 푼다 —
+      # 그래야 로컬과 CI 가 같은 조건에서 같은 게이트를 돈다.
+      - name: 크롬 샌드박스 허용 (AppArmor 제한 해제)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: 에이전트 실행
         uses: anthropics/claude-code-action@v1
         with:
