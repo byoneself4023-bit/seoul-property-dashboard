@@ -5,19 +5,9 @@
 name: 품질 게이트
 
 on:
-  # GITHUB_TOKEN 으로 만든 PR 은 다른 워크플로를 트리거하지 않는다.
-  # 그래서 PR 생성 주체와 무관하게 브랜치 push 시점에 돌린다 —
-  # 토큰을 따로 들이지 않고 검증을 보장하는 방법이다.
-  push:
-    branches:
-      - 'claude/**'
-    paths:
-      - 'dashboard/dashboard.html'
-      - 'dashboard/data.js'
-      - 'dashboard/verify-quality.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/verify.yml'
+  # 에이전트 브랜치 검증은 claude.yml 안에서 한다 — 에이전트의 push 는
+  # github-actions[bot] 이름으로 나가 push 트리거를 발동시키지 않는다(실측).
+  # 여기서는 사람이 여는 PR 과 수동 실행만 받는다.
   pull_request:
     paths:
       - 'dashboard/dashboard.html'

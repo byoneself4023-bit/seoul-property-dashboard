@@ -79,3 +79,54 @@ jobs:
           claude_args: |
             --max-turns 30
             --model claude-sonnet-5
+
+      # ── 에이전트 이후 (전부 셸 단계 — 에이전트의 도구 선택에 의존하지 않는다) ──
+      #
+      # 에이전트의 push 는 github-actions[bot](41898282) 이름으로 나간다.
+      # GitHub 은 이 봇이 만든 이벤트로 워크플로를 트리거하지 않으므로
+      # 브랜치 push 에 반응하는 별도 워크플로는 영영 돌지 않는다.
+      # 그래서 검증과 PR 생성을 같은 잡에서 이어서 한다.
+      - name: 에이전트 브랜치 확인
+        id: branch
+        if: success()
+        env:
+          ISSUE: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          git fetch -q origin "+refs/heads/claude/*:refs/remotes/origin/claude/*" || true
+          BR=$(git for-each-ref --sort=-committerdate --format='%(refname:short)' \
+                 "refs/remotes/origin/claude/issue-${ISSUE}-*" 2>/dev/null | head -1 | sed 's|^origin/||')
+          if [ -z "${BR:-}" ]; then
+            echo "에이전트가 만든 브랜치가 없다 — 코드 변경 없는 응답이었을 수 있다"
+            echo "found=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          AHEAD=$(git rev-list --count "origin/main..origin/$BR")
+          [ "$AHEAD" -eq 0 ] && { echo "main 대비 커밋 없음"; echo "found=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          if git diff --quiet "origin/main..origin/$BR" -- \
+               dashboard/dashboard.html dashboard/data.js dashboard/verify-quality.mjs; then
+            NEEDS_VERIFY=false
+          else
+            NEEDS_VERIFY=true
+          fi
+          echo "브랜치: $BR (커밋 ${AHEAD}개, 품질게이트 필요=$NEEDS_VERIFY)"
+          {
+            echo "found=true"
+            echo "name=$BR"
+            echo "needs_verify=$NEEDS_VERIFY"
+          } >> "$GITHUB_OUTPUT"
+
+      # 화면·데이터가 바뀐 경우에만 브라우저를 띄운다. 문서만 바뀌면 건너뛴다.
+      - name: 품질 게이트 (에이전트 브랜치)
+        if: success() && steps.branch.outputs.found == 'true' && steps.branch.outputs.needs_verify == 'true'
+        run: |
+          set -eu
+          git checkout -q "origin/${{ steps.branch.outputs.name }}"
+          npm run verify
+
+      - name: Draft PR 생성
+        if: success() && steps.branch.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          ISSUE: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: bash .github/scripts/open-draft-pr.sh

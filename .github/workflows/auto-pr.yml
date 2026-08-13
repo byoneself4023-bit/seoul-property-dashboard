@@ -1,28 +1,34 @@
-# 에이전트 브랜치 → Draft PR
+# 에이전트 브랜치 → Draft PR (백스톱)
 #
-# claude-code-action 은 설계상 PR 을 만들지 않고 "Create PR" 링크만 남긴다
-# (브랜치 보호 규칙 준수와 사람의 최종 판단을 위해서다). 링크를 사람이 눌러야 하는데,
-# 그러면 "사용자는 PR 하나만 본다"는 목표에 한 걸음 모자란다.
+# 주 경로는 claude.yml 안의 "Draft PR 생성" 단계다. 에이전트의 push 는
+# github-actions[bot](41898282) 이름으로 나가고, GitHub 은 그 봇이 만든
+# 이벤트로 워크플로를 트리거하지 않는다 — 즉 아래 push 트리거는
+# **에이전트가 만든 브랜치에는 발동하지 않는다.** 실측으로 확인했다.
 #
-# 그래서 PR 생성을 에이전트 밖으로 뺀다. 에이전트의 도구 선택은 신뢰하기 어렵다 —
-# 허용된 MCP 코멘트 도구를 두고 gh api 로 8번 헛돌다 턴을 소진한 전례가 있다.
-# 브랜치 push 라는 확정된 사건에 반응하는 이 워크플로는 결정론적이다.
+# 그래서 이 워크플로는 백스톱이다:
+#   - 사람이 claude/** 브랜치를 직접 push 한 경우
+#   - 주 경로가 실패해 PR 이 안 열렸을 때 수동 실행(workflow_dispatch)
 #
-# Draft 로 여는 이유: PR 은 보이고 CI 도 붙지만 "아직 아니다"가 표시된다.
-# 자동 머지는 하지 않는다. 검토는 사람이 한다.
-name: 에이전트 브랜치 Draft PR
+# 중복 생성은 open-draft-pr.sh 가 막는다(열린 PR 이 있으면 만들지 않는다).
+name: 에이전트 브랜치 Draft PR (백스톱)
 
 on:
   push:
     branches:
       - 'claude/**'
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'PR 을 열 브랜치 (예: claude/issue-1-20260813-0756)'
+        required: true
+        type: string
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: auto-pr-${{ github.ref }}
+  group: auto-pr-${{ github.event.inputs.branch || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -37,65 +43,5 @@ jobs:
       - name: Draft PR 생성 (없을 때만)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          set -uo pipefail
-
-          # 이미 열린 PR 이 있으면 새로 만들지 않는다. 같은 브랜치에 커밋이
-          # 추가될 때마다 PR 이 쌓이는 것을 막는다.
-          open_prs=$(gh pr list --head "$BRANCH" --state open --json number,url --jq 'length')
-          if [ "${open_prs:-0}" -gt 0 ]; then
-            echo "이미 열린 PR 이 있다 — 새로 만들지 않는다:"
-            gh pr list --head "$BRANCH" --state open --json number,url --jq '.[] | "  #\(.number)  \(.url)"'
-            exit 0
-          fi
-
-          # main 대비 커밋이 없으면 PR 을 만들 수 없다.
-          ahead=$(git rev-list --count origin/main.."origin/$BRANCH")
-          if [ "$ahead" -eq 0 ]; then
-            echo "main 대비 새 커밋이 없다 — PR 생략"
-            exit 0
-          fi
-          echo "main 대비 커밋 ${ahead}개"
-
-          # 브랜치 이름에서 이슈 번호를 뽑는다: claude/issue-<N>-<타임스탬프>
-          ISSUE=$(printf '%s' "$BRANCH" | sed -n 's|^claude/issue-\([0-9][0-9]*\)-.*|\1|p')
-          SUBJECT=$(git log -1 --format=%s "origin/$BRANCH")
-          CHANGED=$(git diff --stat origin/main.."origin/$BRANCH")
-
-          TITLE="$SUBJECT"
-          {
-            echo "에이전트가 \`$BRANCH\` 에 올린 작업이다. **Draft 로 열렸고 자동 머지하지 않는다.**"
-            echo
-            echo "## 변경"
-            echo '```'
-            echo "$CHANGED"
-            echo '```'
-            echo
-            if [ -n "$ISSUE" ]; then
-              echo "Closes #$ISSUE"
-              echo
-            fi
-            echo "## 검토 전 확인"
-            echo
-            echo "- 품질 게이트(\`verify.yml\`)가 이 브랜치에서 돌았는지 — 화면·데이터가 바뀐 경우에만 돈다"
-            echo "- 산출물(\`dashboard/dashboard.html\`, \`dashboard/data.js\`)이 의도 없이 바뀌지 않았는지"
-            echo
-            echo "---"
-            echo "이 PR 은 \`.github/workflows/auto-pr.yml\` 이 자동 생성했다."
-          } > /tmp/pr-body.md
-
-          # Draft PR 은 비공개 저장소에서 유료 플랜 기능이다.
-          # 실패하면 일반 PR 로 열되 제목에 표시해 검토 전임을 남긴다.
-          if gh pr create --draft --base main --head "$BRANCH" \
-               --title "$TITLE" --body-file /tmp/pr-body.md; then
-            echo "Draft PR 생성 완료"
-          else
-            echo "Draft 생성 실패 — 일반 PR 로 대체한다 (비공개 저장소의 Draft 는 유료 플랜 기능)"
-            gh pr create --base main --head "$BRANCH" \
-              --title "[검토 전] $TITLE" --body-file /tmp/pr-body.md \
-              || { echo "PR 생성 실패"; exit 1; }
-          fi
-
-          gh pr list --head "$BRANCH" --state open --json number,url,isDraft \
-            --jq '.[] | "결과: #\(.number) draft=\(.isDraft) \(.url)"'
+          BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+        run: bash .github/scripts/open-draft-pr.sh
