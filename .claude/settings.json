@@ -24,6 +24,7 @@
       "Bash(cat:*)",
       "Bash(comm:*)",
       "Bash(coverage:*)",
+      "Bash(cp:*)",
       "Bash(curl:*)",
       "Bash(cut:*)",
       "Bash(date:*)",
@@ -88,6 +89,7 @@
       "Bash(make:*)",
       "Bash(man:*)",
       "Bash(mkdir:*)",
+      "Bash(mv:*)",
       "Bash(mypy:*)",
       "Bash(node*)",
       "Bash(npm*)",
@@ -163,7 +165,6 @@
     "ask": [
       "Bash(chmod:*)",
       "Bash(chown:*)",
-      "Bash(cp:*)",
       "Bash(gh api -X DELETE:*)",
       "Bash(gh api -X POST:*)",
       "Bash(gh api -X PUT:*)",
@@ -175,15 +176,9 @@
       "Bash(gh secret:*)",
       "Bash(git push:*)",
       "Bash(launchctl:*)",
-      "Bash(mv:*)",
       "Bash(rm:*)",
       "Bash(sudo:*)",
-      "Edit(./dashboard/scripts/**)",
-      "Write(./.gitignore)",
-      "Write(./dashboard/dashboard.html)",
-      "Write(./dashboard/data.js)",
-      "Write(./dashboard/scripts/**)",
-      "Write(./package.json)"
+      "Edit(./dashboard/scripts/**)"
     ],
     "deny": [
       "Bash(Clear-Disk:*)",

@@ -14,6 +14,40 @@ deny() { jq -n --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",per
 # 되돌릴 수 없는 자산 — 지우면 복구 경로가 없거나 매우 비싸다
 PRECIOUS='dashboard/\.cache|\.cache/ingest'
 
+# cp/mv 가 무언가를 덮어쓰는가? overwrite / create / unparsed 를 출력한다.
+# 목적지가 없으면 새로 만드는 것이라 되돌릴 것이 없다 — 물을 이유가 없다.
+# 파싱이 조금이라도 불확실하면 unparsed 로 떨어뜨려 ask 로 보낸다(fail-closed).
+classify_copy() {
+  _c="$1"
+  case "$_c" in
+    *'|'*|*'$'*|*'`'*|*';'*|*'&&'*|*'*'*|*'?'*) echo unparsed; return ;;
+    *' -t '*|*'--target-directory'*)             echo unparsed; return ;;
+  esac
+  # shellcheck disable=SC2086
+  set -- $_c
+  _d=""
+  for _a in "$@"; do _d="$_a"; done
+  [ -n "$_d" ] || { echo unparsed; return; }
+  case "$_d" in -*) echo unparsed; return ;; esac
+  case "$_d" in "~"/*) _d="$HOME/${_d#~/}" ;; esac
+
+  if [ -d "$_d" ]; then
+    # 기존 디렉터리로 넣는 경우 — 같은 이름이 이미 있을 때만 덮어쓴다
+    _n=0
+    for _a in "$@"; do
+      _n=$((_n+1))
+      [ "$_n" -eq 1 ] && continue          # cp/mv 자체
+      [ "$_a" = "$_d" ] && continue        # 목적지
+      case "$_a" in -*) continue ;; esac   # 옵션
+      case "$_a" in "~"/*) _a="$HOME/${_a#~/}" ;; esac
+      [ -e "$_d/$(basename "$_a")" ] && { echo overwrite; return; }
+    done
+    echo create; return
+  fi
+  [ -e "$_d" ] && { echo overwrite; return; }
+  echo create
+}
+
 if [ "$TOOL" = "Bash" ]; then
   CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
@@ -34,8 +68,14 @@ if [ "$TOOL" = "Bash" ]; then
   # 4. 덮어쓰기 — 잘라내기 리다이렉트(>)와 cp/mv 로 기존 파일 위에 쓰는 것
   printf '%s' "$CMD" | grep -qE '[^>2]>[[:space:]]*[^>|[:space:]]*(dashboard\.html|data\.js|\.env|\.gitignore|package\.json)' \
     && ask "핵심 파일을 잘라내기 리다이렉트(>)로 덮어씁니다: $CMD"
-  printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])(cp|mv)([[:space:]]|$)' \
-    && ask "파일 복사/이동입니다. 덮어쓰기 대상이 없는지 확인하세요: $CMD"
+  # cp/mv — 덮어쓸 때만 묻는다. 새로 만드는 복사(백업 생성 등)까지 묻으면
+  # 승인만 잦아지고 정작 위험한 것에 무뎌진다. Write 훅과 같은 기준이다.
+  if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])(cp|mv)[[:space:]]'; then
+    case "$(classify_copy "$CMD")" in
+      overwrite) ask "기존 파일을 덮어씁니다: $CMD" ;;
+      unparsed)  ask "복사/이동 대상을 확신할 수 없습니다(변수·글롭·복합 명령). 확인하세요: $CMD" ;;
+    esac
+  fi
 
   # 5. 배포·수집 — 외부에 나가거나 API 할당량을 쓴다
   printf '%s' "$CMD" | grep -qE 'deploy\.sh|run-ingest\.sh' \
