@@ -66,31 +66,14 @@
 /* 최고가 칸은 행이 짧아 아래가 비므로 여백을 더 준다 — 두 칸 높이를 맞춘다 */
 .rpt-col--price .rpt-row{padding:14px 0 13px}
 
-/* ── 시그니처: 기준선 틱 ──
-   행 자체가 눈금이 된다. 직전 최고가 위치에 틱이 박히고 그 오른쪽이 상승분이다.
-   숫자를 읽지 않아도 "어디서 어디로" 가 보인다. 정적이라 캡처에 그대로 남는다. */
-.rpt-scale{grid-column:1/-1; grid-row:3; margin-top:13px; position:relative; height:16px}
-/* 바닥 눈금자 — 10% 마다 눈금이 서고 그 위에 기준선이 지난다 */
-.rpt-base{position:absolute; left:0; right:0; bottom:5px; height:7px; display:block;
-  background:
-    repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 10%) 0 0/100% 4px no-repeat,
-    linear-gradient(var(--rule),var(--rule)) 0 100%/100% 1px no-repeat}
-/* 직전 최고가 → 이번 거래. 이 구간이 상승분이다 */
-/* 변화분. 오르면 적색, 내리면 청색(한국 증시 관례).
-   min-width 는 렌더링 하한이다 — 변화가 아주 작아도 흔적은 남긴다.
-   위치(틱)는 그대로이므로 값을 왜곡하지 않는다. */
-.rpt-fill{position:absolute; bottom:5px; height:7px; display:block;
-  left:var(--from); width:max(2px, calc(var(--to) - var(--from)));
-  background:var(--rise); box-shadow:0 0 0 1px var(--paper)}
-.rpt-fill--fall{background:var(--fall)}
-.rpt-first{grid-column:1/-1; grid-row:3; margin-top:13px; font-family:var(--num);
-  font-size:11.5px; color:var(--muted); letter-spacing:.01em}
-/* 기준선 틱 — 직전 최고가 위치 */
-.rpt-tick{position:absolute; bottom:1px; left:var(--prev); width:2px; height:16px;
-  display:block; background:var(--ink); transform:translateX(-1px)}
-.rpt-from{grid-column:1/-1; grid-row:4; margin-top:7px; font-family:var(--num); font-size:11.5px;
+.rpt-from{grid-column:1/-1; grid-row:3; margin-top:8px; font-family:var(--num); font-size:12px;
   color:var(--muted); font-variant-numeric:tabular-nums; letter-spacing:.01em}
-
+.rpt-from b{font-weight:600; color:var(--ink)}
+.rpt-gap{font-weight:700}
+.rpt-gap--up{color:var(--rise)}
+.rpt-gap--down{color:var(--fall)}
+.rpt-amt--down{color:var(--fall)}
+.rpt-size{font-family:var(--num); font-size:11.5px}
 .rpt-foot{margin-top:20px; border-top:2px solid var(--ink); padding-top:12px}
 .rpt-low{display:flex; align-items:baseline; gap:9px; font-size:14px}
 .rpt-low b{font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--paper);
@@ -290,7 +273,7 @@
   <div class="rpt-sheet">
     <div class="rpt-head">
       <div>
-        <h2>서울 국평 시세</h2>
+        <h2>서울 랜드마크 신고가 · 신저가</h2>
         <p class="rpt-sub" id="rptScope">—</p>
       </div>
       <div class="rpt-meta">
@@ -304,17 +287,16 @@
 
     <div class="rpt-cols">
       <div class="rpt-col rpt-col--price">
-        <h3 class="rpt-colhead">최고가 <span>TOP 5</span></h3>
-        <ol class="rpt-list" id="rptTopPrice"></ol>
+        <h3 class="rpt-colhead">신고가 <span id="rptHighCount">TOP 5</span></h3>
+        <ol class="rpt-list" id="rptHighs"></ol>
       </div>
       <div class="rpt-col">
-        <h3 class="rpt-colhead">직전 최고가 대비 상승 <span>TOP 5</span></h3>
-        <ol class="rpt-list" id="rptTopRise"></ol>
+        <h3 class="rpt-colhead">신저가 <span id="rptLowCount">TOP 5</span></h3>
+        <ol class="rpt-list" id="rptLows"></ol>
       </div>
     </div>
 
     <div class="rpt-foot">
-      <p class="rpt-low" id="rptNewLow">—</p>
       <p class="rpt-basis" id="rptBasis">—</p>
     </div>
   </div>
@@ -329,7 +311,7 @@
      파일이 없으면 목데이터 폴백으로 동작한다.
      ?v= 는 data.js 내용의 sha256 앞 8자 — inject()가 갱신한다. 직접 고치지 말 것.
      브라우저가 낡은 data.js 를 쓰는 것(= 새 화면 + 낡은 숫자)을 막는다. -->
-<script src="data.js?v=64573da1"></script>
+<script src="data.js?v=0edbcd0d"></script>
 
 <!-- ─────────────────────────────────────────────
   스크립트
@@ -1361,75 +1343,50 @@ function rptDash(ymd) {
   return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6)}`;
 }
 
-// 기준선 틱의 좌표. max 를 주면 그 값을 100% 로(여러 행이 같은 자를 쓴다),
-// 주지 않으면 그 행의 큰 값을 100% 로 잡는다(항목마다 자기 기준).
-function rptScaleAttrs(prev, now, max) {
-  const top  = max || Math.max(prev, now);
-  const from = Math.min(prev, now) / top * 100;
-  const to   = Math.max(prev, now) / top * 100;
-  return `style="--prev:${(prev / top * 100).toFixed(2)}%;` +
-         `--from:${from.toFixed(2)}%;--to:${to.toFixed(2)}%"`;
-}
-function rptScaleHtml(prev, now) {
-  const dir = now < prev ? ' rpt-fill--fall' : '';
-  return `<span class="rpt-scale"><i class="rpt-base"></i>` +
-         `<i class="rpt-fill${dir}"></i><i class="rpt-tick"></i></span>` +
-         `<span class="rpt-from">직전 최고 ${rptEok(prev)} → 이번 ${rptEok(now)}억</span>`;
+function rptRow(x, i, kind) {
+  const up = kind === 'high';
+  return `
+    <li class="rpt-row">
+      <span class="rpt-rank">${i + 1}</span>
+      <span class="rpt-name">${rptEsc(x.name)}</span>
+      <span class="rpt-amt${up ? '' : ' rpt-amt--down'}">${rptEok(x.amount)}<i>억</i></span>
+      <span class="rpt-umd">${rptEsc(x.umd)} · <span class="rpt-size">전용 ${x.size}㎡</span> · ${rptDash(x.date)}</span>
+      <span class="rpt-from">직전 ${up ? '최고' : '최저'} <b>${rptEok(x.prev)}</b> → 이번 <b>${rptEok(x.amount)}</b>억
+        <span class="rpt-gap rpt-gap--${up ? 'up' : 'down'}">${up ? '+' : '−'}${rptEok(x.gap)}억</span></span>
+    </li>`;
 }
 
 function renderReport() {
   const rep = (window.__DASHBOARD_DATA__ || {}).report;
-  const priceEl = document.getElementById('rptTopPrice');
-  const riseEl  = document.getElementById('rptTopRise');
+  const highEl = document.getElementById('rptHighs');
+  const lowEl  = document.getElementById('rptLows');
   if (!rep) {
-    priceEl.innerHTML = '<li class="rpt-empty">리포트 데이터가 없습니다. 수집을 실행하세요.</li>';
-    riseEl.innerHTML  = '';
+    highEl.innerHTML = '<li class="rpt-empty">리포트 데이터가 없습니다. 수집을 실행하세요.</li>';
+    lowEl.innerHTML  = '';
     return;
   }
 
   const [from, to] = rep.period.split('~');
-  document.getElementById('rptScope').textContent  = `${rep.areaLabel} · ${rep.scope}`;
+  const d = s => `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6)}`;
+  document.getElementById('rptScope').textContent  = rep.scope;
   document.getElementById('rptPeriod').textContent =
-    `${from.replace(/-/g, '.')} – ${to.slice(5).replace('-', '.')}`;
-  document.getElementById('rptCount').textContent  = `거래 ${rep.counts.week}건`;
+    `최근 ${rep.weeks}주  ${d(from)} – ${d(to).slice(5)}`;
+  document.getElementById('rptCount').textContent  =
+    `랜드마크 ${rep.landmark.count}곳`;
   document.getElementById('rptChip').style.display = rep.provisional ? '' : 'none';
 
-  // 최고가 칸의 눈금은 **항목마다 자기 기준**이다. 전체 가격대를 한 축에 놓으면
-  // 53.9억 옆에서 19억대가 뭉개진다. 각 단지의 직전 최고가와 이번 거래만 비교한다.
-  priceEl.innerHTML = rep.topPrice.map((r, i) => {
-    const head = `
-      <span class="rpt-rank">${i + 1}</span>
-      <span class="rpt-name">${rptEsc(r.name)}</span>
-      <span class="rpt-amt">${rptEok(r.amount)}<i>억</i></span>
-      <span class="rpt-umd">${rptEsc(r.umd)} · ${rptDash(r.date)}</span>`;
-    if (!Number.isFinite(r.prev)) {
-      return `<li class="rpt-row">${head}<span class="rpt-first">${rep.since}년 이후 첫 거래</span></li>`;
-    }
-    return `<li class="rpt-row" ${rptScaleAttrs(r.prev, r.amount)}>${head}${rptScaleHtml(r.prev, r.amount)}</li>`;
-  }).join('') || '<li class="rpt-empty">해당 주 거래 없음</li>';
+  document.getElementById('rptHighCount').textContent = `${rep.counts.high}건 중 5`;
+  document.getElementById('rptLowCount').textContent  = `${rep.counts.low}건 중 5`;
 
-  // 상승 칸은 목록 안에서 가장 높은 거래가를 100% 로 잡아 다섯 행이 같은 자를 쓴다.
-  const scaleMax = Math.max(...rep.topRise.map(r => r.amount), 1);
-  riseEl.innerHTML = rep.topRise.map((r, i) => `
-    <li class="rpt-row" ${rptScaleAttrs(r.prev, r.amount, scaleMax)}>
-      <span class="rpt-rank">${i + 1}</span>
-      <span class="rpt-name">${rptEsc(r.name)}</span>
-      <span class="rpt-amt rpt-amt--rise">+${rptEok(r.up)}<i>억</i></span>
-      <span class="rpt-umd">${rptEsc(r.umd)} · ${rptDash(r.date)}</span>
-      ${rptScaleHtml(r.prev, r.amount)}
-    </li>`).join('') || '<li class="rpt-empty">직전 최고가를 넘긴 거래 없음</li>';
-
-  const low = rep.newLow;
-  document.getElementById('rptNewLow').innerHTML = low
-    ? `<b>신저가</b> <em>${rptEsc(low.name)}</em>` +
-      `<span class="rpt-low-umd">${rptEsc(low.umd)} · ${rptDash(low.date)}</span>` +
-      `<span>${rptEok(low.prev)} → ${rptEok(low.amount)}억 (-${rptEok(low.down)}억)</span>` +
-      (low.count > 1 ? `<span class="rpt-low-umd">외 ${low.count - 1}건</span>` : '')
-    : '<b>신저가</b> <em>없음</em>';
+  highEl.innerHTML = rep.highs.map((x, i) => rptRow(x, i, 'high')).join('')
+    || '<li class="rpt-empty">해당 구간 신고가 없음</li>';
+  lowEl.innerHTML  = rep.lows.map((x, i) => rptRow(x, i, 'low')).join('')
+    || '<li class="rpt-empty">해당 구간 신저가 없음</li>';
 
   document.getElementById('rptBasis').textContent =
-    `${rep.since}년 이후 거래 기준 · ${rep.filters.join(' · ')} · ` +
-    `단지별 최고 1건 · 등기 미완료 거래 포함(잠정) · 국토교통부 RTMS 실거래가`;
+    `법정동별 랜드마크 = 최근 ${rep.landmark.months}개월 평당가 1위 단지(중앙값 기준, 최소 ${rep.landmark.minDeals}건) · ` +
+    `같은 단지·같은 평형대끼리 비교 · ${rep.since}년 이후 거래 기준 · ${rep.filters.join(' · ')} · ` +
+    `단지별 1건 · 등기 미완료 거래 포함(잠정) · 국토교통부 RTMS 실거래가`;
 }
 
 function setViewMode(mode) {

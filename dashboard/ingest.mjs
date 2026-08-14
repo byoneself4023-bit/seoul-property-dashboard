@@ -611,16 +611,41 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
 }
 
 // ════════════════════════════════════════════════
-//  시장 리포트 집계 (블록 ① 국평 신고가)
+//  시장 리포트 집계 (블록 ① 랜드마크 신고가·신저가)
 // ════════════════════════════════════════════════
 //
-// 화면이 그릴 결과만 미리 계산해 data.js 에 싣는다. 개별 거래 45만 건을
+// 법정동별 랜드마크 아파트에서 신고가·신저가가 나왔는지 본다.
+// 화면이 그릴 결과만 미리 계산해 data.js 에 싣는다 — 개별 거래 45만 건을
 // data.js 에 넣으면 66MB 가 되므로 원본은 캐시에만 두는 구조를 유지한다.
-// 이 구간은 aggregateItems / buildNormalized 를 건드리지 않는다 — 기존
-// 거래량 집계의 값이 달라지면 안 되기 때문이다.
+// 이 구간은 aggregateItems / buildNormalized 를 건드리지 않는다.
 
-/** 국평 판정: 전용면적 84.0~84.99㎡ */
-const REPORT_PYEONG = 84;
+/** 1평 = 3.3058㎡ */
+const PYEONG_M2 = 3.3058;
+
+/** 랜드마크 선정 기간 — 최근 1년 */
+const LANDMARK_MONTHS = 12;
+
+/**
+ * 랜드마크로 뽑히려면 최근 1년에 이만큼 거래가 있어야 한다.
+ *
+ * 실측 근거 — 최소 1건이면 법정동 308개가 커버되지만, 우연히 비싸게 팔린
+ * 한 건이 그 동네를 대표한다. 44개 법정동에서 랜드마크가 뒤집혔다:
+ * 한남동은 나인원한남(거래 2건)이 한남더힐(9건)을, 내수동은 1건짜리가
+ * 5건짜리를 평당 0.02억 차이로 제쳤다.
+ * 5건이면 법정동 267개로 41개를 잃지만 그런 뒤집힘이 사라진다.
+ * 10건은 커버리지를 더 잃는 데 비해 얻는 것이 적었다.
+ */
+const LANDMARK_MIN_DEALS = 5;
+
+/**
+ * 집계 구간 — 직전 완료 주부터 거슬러 8주.
+ *
+ * 실측 근거 — 상승장이라 랜드마크 단지의 신저가가 구조적으로 희소하다.
+ * 1주 기준 신고가 4건·신저가 1건, 2주 16·1, 4주 78·2, 8주 205·6.
+ * 8주라야 양쪽 목록이 다섯 줄을 채운다. 신고가만 짧게 잡고 신저가만 길게
+ * 잡으면 캡처 한 장에서 두 칸의 기준이 달라 오해를 부르므로 같게 둔다.
+ */
+const REPORT_WEEKS = 8;
 
 /**
  * 1985-04-11 이전 준공 아파트는 전용면적에 복도·계단·엘리베이터 등 공용면적이
@@ -639,118 +664,161 @@ function itemYmd(it) {
 }
 
 /**
+ * 평형대 키. 전용면적의 정수부로 묶는다.
+ *
+ * 반올림하면 안 된다 — 국평은 84.0~84.99 한 덩어리인데 84.5 에서 갈려
+ * 84.9㎡ 40,527건을 포함한 67,237건이 "85㎡" 로 떨어져 나간다. 실측으로 확인했다.
+ * 정수부는 "전용 59/84/114" 라는 실제 표기와도 맞는다.
+ */
+function sizeKey(area) {
+  return Math.floor(area);
+}
+
+/**
  * 리포트 대상 거래만 남긴다.
  *
  * 제외 규칙 — docs/수집-스키마-변경.md 9절의 왜곡 거래 3종 중 둘을 건다.
  *   - cdealType === 'O'      계약해제. 응답에 그대로 남아 있다
  *   - dealingGbn 직거래       특수관계 거래라 시세와 동떨어질 수 있다
  * 등기 필터(rgstDate)는 걸지 않는다. apt 의 rgstDate 공백이 17.9% 인데
- * 그 대부분이 최근 거래라, 이번 주 거래에 걸면 리포트가 통째로 빈다.
- * 대신 화면에 "잠정" 으로 표시한다.
+ * 그 대부분이 최근 거래라, 최근 구간이 통째로 빈다. 대신 화면에 "잠정" 표시.
  */
 function reportPool(rawByDistrict) {
   const pool = [];
   for (const [district, raw] of Object.entries(rawByDistrict)) {
     for (const it of (raw.apt ?? [])) {
       const area = Number(it.area);
-      if (!Number.isFinite(area) || Math.floor(area) !== REPORT_PYEONG) continue;
+      const amount = Number(it.amount);
+      if (!Number.isFinite(area) || area <= 0 || !Number.isFinite(amount)) continue;
       if (it.cdealType === 'O') continue;
       if (String(it.dealingGbn ?? '').includes('직거래')) continue;
       if (!(Number(it.buildYear) >= REPORT_MIN_BUILD_YEAR)) continue;
-      if (!Number.isFinite(Number(it.amount))) continue;
-      pool.push({ ...it, district, ymd: itemYmd(it) });
+      pool.push({
+        district, umd: it.umdNm, name: it.name,
+        seq: it.aptSeq ?? `${district}|${it.umdNm}|${it.name}`,
+        area, amount, size: sizeKey(area),
+        ppy: amount / (area / PYEONG_M2),   // 평당가(만원)
+        ymd: itemYmd(it),
+      });
     }
   }
   return pool;
 }
 
-/** 같은 단지가 목록을 채우지 않게 aptSeq 당 1건만 남긴다(점수 최대인 건). */
-function dedupeByComplex(rows, score) {
-  const best = new Map();
-  for (const r of rows) {
-    const k = r.aptSeq ?? `${r.name}|${r.district}`;
-    const cur = best.get(k);
-    if (!cur || score(r) > score(cur)) best.set(k, r);
-  }
-  return [...best.values()];
+function median(nums) {
+  const s = [...nums].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+/** YYYYMMDD 에서 n일 전 YYYYMMDD */
+function shiftYmd(ymd, days) {
+  const d = new Date(`${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
 }
 
 /**
- * 블록 ① 국평 신고가 — 화면이 그대로 그릴 수 있는 형태로 낸다.
+ * 법정동별 랜드마크 = 최근 1년 평당가 1위 단지.
  *
- * 기준 주는 weekPeriods 의 마지막(직전 완료 주)이다. 진행 중인 주를 쓰면
- * 신고 지연 때문에 며칠치만 담겨 주마다 표본 수가 들쭉날쭉해진다.
+ * 평균이 아니라 중앙값을 쓴다 — 한 건의 초고가 거래가 단지 전체를 끌어올리는
+ * 것을 막는다. 랜드마크 선정은 "그 동네에서 가장 비싼 곳"을 찾는 일이지
+ * "가장 비싼 거래"를 찾는 일이 아니다.
+ */
+function pickLandmarks(pool, latestYmd) {
+  const from = shiftYmd(latestYmd, -365);
+  const byComplex = new Map();
+  for (const r of pool) {
+    if (r.ymd < from) continue;
+    const k = `${r.district}|${r.umd}|${r.seq}`;
+    if (!byComplex.has(k)) byComplex.set(k, []);
+    byComplex.get(k).push(r);
+  }
+  const byUmd = new Map();
+  for (const rows of byComplex.values()) {
+    if (rows.length < LANDMARK_MIN_DEALS) continue;
+    const u = `${rows[0].district}|${rows[0].umd}`;
+    const score = median(rows.map(r => r.ppy));
+    const cur = byUmd.get(u);
+    if (!cur || score > cur.score) {
+      byUmd.set(u, { seq: rows[0].seq, name: rows[0].name,
+                     district: rows[0].district, umd: rows[0].umd, score, deals: rows.length });
+    }
+  }
+  return byUmd;
+}
+
+/**
+ * 블록 ① 랜드마크 신고가·신저가.
  *
  * @param {Object} rawByDistrict
- * @param {string[]} weekPeriods  "YYYY-MM-DD~YYYY-MM-DD" (오래된순)
+ * @param {string[]} weekPeriods  "YYYY-MM-DD~YYYY-MM-DD" (오래된순, 완료된 주)
  * @returns {Object} report
  */
 export function buildReport(rawByDistrict, weekPeriods) {
-  const period = weekPeriods[weekPeriods.length - 1];
-  const [from, to] = period.split('~').map(d => d.replace(/-/g, ''));
+  const span = weekPeriods.slice(-REPORT_WEEKS);
+  const from = span[0].split('~')[0].replace(/-/g, '');
+  const to   = span[span.length - 1].split('~')[1].replace(/-/g, '');
 
-  const pool    = reportPool(rawByDistrict);
-  const inWeek  = pool.filter(r => r.ymd >= from && r.ymd <= to);
-  const before  = pool.filter(r => r.ymd < from);
+  const pool = reportPool(rawByDistrict);
+  const latest = pool.reduce((m, r) => (r.ymd > m ? r.ymd : m), '00000000');
+  const landmarks = pickLandmarks(pool, latest);
+  const seqs = new Set([...landmarks.values()].map(v => v.seq));
 
-  // 단지별 과거 최고·최저 — 기준 주 이전 거래로만 만든다
-  const prevMax = new Map(), prevMin = new Map();
-  for (const r of before) {
-    const k = r.aptSeq ?? `${r.name}|${r.district}`;
-    prevMax.set(k, Math.max(prevMax.get(k) ?? -Infinity, r.amount));
-    prevMin.set(k, Math.min(prevMin.get(k) ??  Infinity, r.amount));
+  // 랜드마크 단지의 거래만, 평형대별로 모은다.
+  // 평형이 다르면 비교할 수 없다 — 대형 평형이 항상 이기기 때문이다.
+  const bySizeGroup = new Map();
+  for (const r of pool) {
+    if (!seqs.has(r.seq)) continue;
+    const k = `${r.seq}|${r.size}`;
+    if (!bySizeGroup.has(k)) bySizeGroup.set(k, []);
+    bySizeGroup.get(k).push(r);
   }
-  const keyOf = r => r.aptSeq ?? `${r.name}|${r.district}`;
 
-  const row = r => ({
-    name: r.name, umd: r.umdNm, district: r.district,
-    amount: r.amount, date: r.ymd,
-  });
+  const highs = [], lows = [];
+  for (const rows of bySizeGroup.values()) {
+    const before = rows.filter(r => r.ymd < from);
+    const inSpan = rows.filter(r => r.ymd >= from && r.ymd <= to);
+    if (!before.length || !inSpan.length) continue;
+    const prevMax = Math.max(...before.map(r => r.amount));
+    const prevMin = Math.min(...before.map(r => r.amount));
+    const top = inSpan.reduce((m, r) => (r.amount > m.amount ? r : m));
+    const bot = inSpan.reduce((m, r) => (r.amount < m.amount ? r : m));
+    if (top.amount > prevMax) highs.push({ r: top, prev: prevMax, gap: top.amount - prevMax });
+    if (bot.amount < prevMin) lows.push({ r: bot, prev: prevMin, gap: prevMin - bot.amount });
+  }
 
-  // 최고가 목록에도 직전 최고가를 붙인다 — 화면이 항목마다 자기 기준으로
-  // 눈금을 그린다(전체 가격대를 한 축에 놓으면 53.9억 옆에서 19억이 뭉갠다).
-  // 직전 거래가 없으면 prev 를 넣지 않는다 → 화면은 "첫 거래" 로 표시한다.
-  const topPrice = dedupeByComplex(inWeek, r => r.amount)
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5)
-    .map(r => {
-      const p = prevMax.get(keyOf(r));
-      return Number.isFinite(p) ? { ...row(r), prev: p } : row(r);
-    });
-
-  const risen = inWeek
-    .map(r => {
-      const p = prevMax.get(keyOf(r));
-      return Number.isFinite(p) && r.amount > p ? { ...r, prev: p, up: r.amount - p } : null;
-    })
-    .filter(Boolean);
-  const topRise = dedupeByComplex(risen, r => r.up)
-    .sort((a, b) => b.up - a.up)
-    .slice(0, 5)
-    .map(r => ({ ...row(r), prev: r.prev, up: r.up }));
-
-  const lows = inWeek
-    .map(r => {
-      const p = prevMin.get(keyOf(r));
-      return Number.isFinite(p) && r.amount < p ? { ...r, prev: p, down: p - r.amount } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.down - a.down);
-  const newLow = lows.length
-    ? { ...row(lows[0]), prev: lows[0].prev, down: lows[0].down, count: lows.length }
-    : null;
+  // 한 단지가 평형을 바꿔가며 목록을 채우지 않게 단지당 1건(변동폭 최대)만 남긴다.
+  const pickTop = (list) => {
+    const best = new Map();
+    for (const x of list) {
+      const cur = best.get(x.r.seq);
+      if (!cur || x.gap > cur.gap) best.set(x.r.seq, x);
+    }
+    return [...best.values()]
+      .sort((a, b) => b.gap - a.gap)
+      .slice(0, 5)
+      .map(x => ({
+        name: x.r.name, umd: x.r.umd, district: x.r.district,
+        size: x.r.size, amount: x.r.amount, date: x.r.ymd,
+        prev: x.prev, gap: x.gap,
+      }));
+  };
 
   return {
-    period,                       // "YYYY-MM-DD~YYYY-MM-DD" 기준 주
-    areaLabel: '전용 84㎡',
-    scope: '아파트',
-    since: START_YM.slice(0, 4),  // "2022" — 역대가 아니라 이 해 이후라는 표시
-    counts: { week: inWeek.length, pool: pool.length },
-    provisional: true,            // 등기 미완료 거래 포함 → 화면에 "잠정"
+    period: `${from}~${to}`,           // 실제 날짜 범위 (YYYYMMDD)
+    weeks: REPORT_WEEKS,
+    scope: '법정동별 랜드마크 아파트 · 전 평형',
+    since: START_YM.slice(0, 4),       // "2022" — 역대가 아니라 이 해 이후
+    landmark: {
+      count: landmarks.size,
+      minDeals: LANDMARK_MIN_DEALS,
+      months: LANDMARK_MONTHS,
+    },
+    counts: { high: highs.length, low: lows.length, pool: pool.length },
+    provisional: true,                 // 등기 미완료 거래 포함
     filters: ['해제 거래 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이후 준공`],
-    topPrice,
-    topRise,
-    newLow,
+    highs: pickTop(highs),
+    lows: pickTop(lows),
   };
 }
 
@@ -1887,8 +1955,9 @@ async function main() {
   // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
   normalized.report = buildReport(rawByDistrict, weekPeriods);
   console.log(
-    `[ingest] 리포트 집계 — 기준 주 ${normalized.report.period}, ` +
-    `국평 거래 ${normalized.report.counts.week}건 (전체 풀 ${normalized.report.counts.pool}건)`
+    `[ingest] 리포트 집계 — ${normalized.report.period} (${normalized.report.weeks}주), ` +
+    `랜드마크 ${normalized.report.landmark.count}곳, ` +
+    `신고가 ${normalized.report.counts.high}건 / 신저가 ${normalized.report.counts.low}건`
   );
 
   console.log('[ingest] data.js 및 data.json 저장 중...');
