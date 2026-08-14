@@ -209,6 +209,8 @@ data.json
 !dashboard/.cache/
 !dashboard/.cache/ingest/
 !dashboard/.cache/ingest/**
+!dashboard/.cache/rebuild/
+!dashboard/.cache/rebuild/**
 
 # 훅 상태 파일 (검증 재시도 카운터·로그)
 .claude/.state/
