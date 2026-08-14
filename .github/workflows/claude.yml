@@ -75,8 +75,11 @@ jobs:
           # 물어볼 사람이 없어 곧 거부가 된다. 훅 3개는 이 파일에도 그대로 실려
           # 방어선은 유지된다.
           settings: .github/claude-ci-settings.json
+          # 30턴으로 두 번 연속 error_max_turns 로 죽었다(이슈 #1, #6).
+          # #6 은 31턴째에 끊겨 브랜치를 push 하지도 못했다 — 조사·구현·검증·보고를
+          # 한 이슈에 다 넣으면 30턴으로는 부족하다. 이슈 쪼개기와 함께 상한을 올린다.
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --model claude-sonnet-5
 
       # ── 에이전트 이후 (전부 셸 단계 — 에이전트의 도구 선택에 의존하지 않는다) ──
