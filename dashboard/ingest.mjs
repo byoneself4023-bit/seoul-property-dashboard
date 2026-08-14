@@ -707,10 +707,16 @@ export function buildReport(rawByDistrict, weekPeriods) {
     amount: r.amount, date: r.ymd,
   });
 
+  // 최고가 목록에도 직전 최고가를 붙인다 — 화면이 항목마다 자기 기준으로
+  // 눈금을 그린다(전체 가격대를 한 축에 놓으면 53.9억 옆에서 19억이 뭉갠다).
+  // 직전 거래가 없으면 prev 를 넣지 않는다 → 화면은 "첫 거래" 로 표시한다.
   const topPrice = dedupeByComplex(inWeek, r => r.amount)
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5)
-    .map(row);
+    .map(r => {
+      const p = prevMax.get(keyOf(r));
+      return Number.isFinite(p) ? { ...row(r), prev: p } : row(r);
+    });
 
   const risen = inWeek
     .map(r => {

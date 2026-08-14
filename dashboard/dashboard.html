@@ -64,7 +64,7 @@
 .rpt-amt i{font-family:var(--kr); font-style:normal; font-size:13px; font-weight:600; margin-left:3px}
 .rpt-amt--rise{color:var(--rise)}
 /* 최고가 칸은 행이 짧아 아래가 비므로 여백을 더 준다 — 두 칸 높이를 맞춘다 */
-.rpt-col--price .rpt-row{padding:16px 0 15px}
+.rpt-col--price .rpt-row{padding:14px 0 13px}
 
 /* ── 시그니처: 기준선 틱 ──
    행 자체가 눈금이 된다. 직전 최고가 위치에 틱이 박히고 그 오른쪽이 상승분이다.
@@ -76,9 +76,15 @@
     repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 10%) 0 0/100% 4px no-repeat,
     linear-gradient(var(--rule),var(--rule)) 0 100%/100% 1px no-repeat}
 /* 직전 최고가 → 이번 거래. 이 구간이 상승분이다 */
+/* 변화분. 오르면 적색, 내리면 청색(한국 증시 관례).
+   min-width 는 렌더링 하한이다 — 변화가 아주 작아도 흔적은 남긴다.
+   위치(틱)는 그대로이므로 값을 왜곡하지 않는다. */
 .rpt-fill{position:absolute; bottom:5px; height:7px; display:block;
-  left:var(--prev); width:calc(var(--now) - var(--prev));
+  left:var(--from); width:max(2px, calc(var(--to) - var(--from)));
   background:var(--rise); box-shadow:0 0 0 1px var(--paper)}
+.rpt-fill--fall{background:var(--fall)}
+.rpt-first{grid-column:1/-1; grid-row:3; margin-top:13px; font-family:var(--num);
+  font-size:11.5px; color:var(--muted); letter-spacing:.01em}
 /* 기준선 틱 — 직전 최고가 위치 */
 .rpt-tick{position:absolute; bottom:1px; left:var(--prev); width:2px; height:16px;
   display:block; background:var(--ink); transform:translateX(-1px)}
@@ -323,7 +329,7 @@
      파일이 없으면 목데이터 폴백으로 동작한다.
      ?v= 는 data.js 내용의 sha256 앞 8자 — inject()가 갱신한다. 직접 고치지 말 것.
      브라우저가 낡은 data.js 를 쓰는 것(= 새 화면 + 낡은 숫자)을 막는다. -->
-<script src="data.js?v=5c079a72"></script>
+<script src="data.js?v=64573da1"></script>
 
 <!-- ─────────────────────────────────────────────
   스크립트
@@ -1355,6 +1361,22 @@ function rptDash(ymd) {
   return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6)}`;
 }
 
+// 기준선 틱의 좌표. max 를 주면 그 값을 100% 로(여러 행이 같은 자를 쓴다),
+// 주지 않으면 그 행의 큰 값을 100% 로 잡는다(항목마다 자기 기준).
+function rptScaleAttrs(prev, now, max) {
+  const top  = max || Math.max(prev, now);
+  const from = Math.min(prev, now) / top * 100;
+  const to   = Math.max(prev, now) / top * 100;
+  return `style="--prev:${(prev / top * 100).toFixed(2)}%;` +
+         `--from:${from.toFixed(2)}%;--to:${to.toFixed(2)}%"`;
+}
+function rptScaleHtml(prev, now) {
+  const dir = now < prev ? ' rpt-fill--fall' : '';
+  return `<span class="rpt-scale"><i class="rpt-base"></i>` +
+         `<i class="rpt-fill${dir}"></i><i class="rpt-tick"></i></span>` +
+         `<span class="rpt-from">직전 최고 ${rptEok(prev)} → 이번 ${rptEok(now)}억</span>`;
+}
+
 function renderReport() {
   const rep = (window.__DASHBOARD_DATA__ || {}).report;
   const priceEl = document.getElementById('rptTopPrice');
@@ -1372,29 +1394,30 @@ function renderReport() {
   document.getElementById('rptCount').textContent  = `거래 ${rep.counts.week}건`;
   document.getElementById('rptChip').style.display = rep.provisional ? '' : 'none';
 
-  priceEl.innerHTML = rep.topPrice.map((r, i) => `
-    <li class="rpt-row">
+  // 최고가 칸의 눈금은 **항목마다 자기 기준**이다. 전체 가격대를 한 축에 놓으면
+  // 53.9억 옆에서 19억대가 뭉개진다. 각 단지의 직전 최고가와 이번 거래만 비교한다.
+  priceEl.innerHTML = rep.topPrice.map((r, i) => {
+    const head = `
       <span class="rpt-rank">${i + 1}</span>
       <span class="rpt-name">${rptEsc(r.name)}</span>
       <span class="rpt-amt">${rptEok(r.amount)}<i>억</i></span>
-      <span class="rpt-umd">${rptEsc(r.umd)} · ${rptDash(r.date)}</span>
-    </li>`).join('') || '<li class="rpt-empty">해당 주 거래 없음</li>';
+      <span class="rpt-umd">${rptEsc(r.umd)} · ${rptDash(r.date)}</span>`;
+    if (!Number.isFinite(r.prev)) {
+      return `<li class="rpt-row">${head}<span class="rpt-first">${rep.since}년 이후 첫 거래</span></li>`;
+    }
+    return `<li class="rpt-row" ${rptScaleAttrs(r.prev, r.amount)}>${head}${rptScaleHtml(r.prev, r.amount)}</li>`;
+  }).join('') || '<li class="rpt-empty">해당 주 거래 없음</li>';
 
-  // 기준선 틱 — 상승 목록에서 가장 높은 거래가를 100% 로 잡아 모든 행이 같은 자를 쓴다.
+  // 상승 칸은 목록 안에서 가장 높은 거래가를 100% 로 잡아 다섯 행이 같은 자를 쓴다.
   const scaleMax = Math.max(...rep.topRise.map(r => r.amount), 1);
-  riseEl.innerHTML = rep.topRise.map((r, i) => {
-    const prev = (r.prev / scaleMax * 100).toFixed(2);
-    const now  = (r.amount / scaleMax * 100).toFixed(2);
-    return `
-    <li class="rpt-row" style="--prev:${prev}%;--now:${now}%">
+  riseEl.innerHTML = rep.topRise.map((r, i) => `
+    <li class="rpt-row" ${rptScaleAttrs(r.prev, r.amount, scaleMax)}>
       <span class="rpt-rank">${i + 1}</span>
       <span class="rpt-name">${rptEsc(r.name)}</span>
       <span class="rpt-amt rpt-amt--rise">+${rptEok(r.up)}<i>억</i></span>
       <span class="rpt-umd">${rptEsc(r.umd)} · ${rptDash(r.date)}</span>
-      <span class="rpt-scale"><i class="rpt-base"></i><i class="rpt-fill"></i><i class="rpt-tick"></i></span>
-      <span class="rpt-from">${rptEok(r.prev)} → ${rptEok(r.amount)}억</span>
-    </li>`;
-  }).join('') || '<li class="rpt-empty">직전 최고가를 넘긴 거래 없음</li>';
+      ${rptScaleHtml(r.prev, r.amount)}
+    </li>`).join('') || '<li class="rpt-empty">직전 최고가를 넘긴 거래 없음</li>';
 
   const low = rep.newLow;
   document.getElementById('rptNewLow').innerHTML = low
