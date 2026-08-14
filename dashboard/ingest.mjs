@@ -10,12 +10,33 @@
  *   RTMS_SERVICE_KEY  공공데이터포털 API 인증키 (URL-encoded 없는 원문)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 이 파일이 `node ingest.mjs` 로 직접 실행됐는가.
+ *
+ * 2026-08-12 에 사고가 있었다 — 다른 스크립트가 집계 함수를 쓰려고 이 모듈을
+ * import 했는데, 진입점 가드가 "--selftest 가 없으면 main()" 이라 **전량 수집이
+ * 돌아 data.js 가 덮어써졌다.** import 는 수집을 실행시키면 안 된다.
+ *
+ * `import.meta.main` 은 Node 24+ 에서만 있다. 러너는 Node 22 라 그걸 쓰면
+ * CI 에서 항상 false 가 되어 이번엔 반대로 수집이 영영 안 돈다. 그래서
+ * argv[1] 과 이 모듈의 URL 을 직접 비교한다(심볼릭 링크는 realpath 로 푼다).
+ */
+const isDirectRun = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+})();
 
 // ════════════════════════════════════════════════
 //  .env 자동 로드 (의존성 없음)
@@ -586,6 +607,144 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
     source: 'rtms',
     periods: { week: weekPeriods, month: monthPeriods },
     byDistrict,
+  };
+}
+
+// ════════════════════════════════════════════════
+//  시장 리포트 집계 (블록 ① 국평 신고가)
+// ════════════════════════════════════════════════
+//
+// 화면이 그릴 결과만 미리 계산해 data.js 에 싣는다. 개별 거래 45만 건을
+// data.js 에 넣으면 66MB 가 되므로 원본은 캐시에만 두는 구조를 유지한다.
+// 이 구간은 aggregateItems / buildNormalized 를 건드리지 않는다 — 기존
+// 거래량 집계의 값이 달라지면 안 되기 때문이다.
+
+/** 국평 판정: 전용면적 84.0~84.99㎡ */
+const REPORT_PYEONG = 84;
+
+/**
+ * 1985-04-11 이전 준공 아파트는 전용면적에 복도·계단·엘리베이터 등 공용면적이
+ * 포함된 상태로 신고된다. 같은 84㎡라도 실제 전용 면적은 더 좁아서, 이후 준공
+ * 단지와 같은 평형으로 비교하면 안 된다.
+ *
+ * 데이터에 준공 "월"이 없고 연도(buildYear)만 있으므로 연 단위로 자른다.
+ * 그 결과 1985년 4~12월 준공분(비교 가능한 물건)이 함께 빠지지만 감수한다 —
+ * 반대로 1985년 1~3월분을 남기면 면적 기준이 다른 물건이 섞인다.
+ */
+const REPORT_MIN_BUILD_YEAR = 1986;
+
+/** 거래일을 YYYYMMDD 로. 정렬·비교에 쓴다. */
+function itemYmd(it) {
+  return `${it.year}${String(it.month).padStart(2, '0')}${String(it.day).padStart(2, '0')}`;
+}
+
+/**
+ * 리포트 대상 거래만 남긴다.
+ *
+ * 제외 규칙 — docs/수집-스키마-변경.md 9절의 왜곡 거래 3종 중 둘을 건다.
+ *   - cdealType === 'O'      계약해제. 응답에 그대로 남아 있다
+ *   - dealingGbn 직거래       특수관계 거래라 시세와 동떨어질 수 있다
+ * 등기 필터(rgstDate)는 걸지 않는다. apt 의 rgstDate 공백이 17.9% 인데
+ * 그 대부분이 최근 거래라, 이번 주 거래에 걸면 리포트가 통째로 빈다.
+ * 대신 화면에 "잠정" 으로 표시한다.
+ */
+function reportPool(rawByDistrict) {
+  const pool = [];
+  for (const [district, raw] of Object.entries(rawByDistrict)) {
+    for (const it of (raw.apt ?? [])) {
+      const area = Number(it.area);
+      if (!Number.isFinite(area) || Math.floor(area) !== REPORT_PYEONG) continue;
+      if (it.cdealType === 'O') continue;
+      if (String(it.dealingGbn ?? '').includes('직거래')) continue;
+      if (!(Number(it.buildYear) >= REPORT_MIN_BUILD_YEAR)) continue;
+      if (!Number.isFinite(Number(it.amount))) continue;
+      pool.push({ ...it, district, ymd: itemYmd(it) });
+    }
+  }
+  return pool;
+}
+
+/** 같은 단지가 목록을 채우지 않게 aptSeq 당 1건만 남긴다(점수 최대인 건). */
+function dedupeByComplex(rows, score) {
+  const best = new Map();
+  for (const r of rows) {
+    const k = r.aptSeq ?? `${r.name}|${r.district}`;
+    const cur = best.get(k);
+    if (!cur || score(r) > score(cur)) best.set(k, r);
+  }
+  return [...best.values()];
+}
+
+/**
+ * 블록 ① 국평 신고가 — 화면이 그대로 그릴 수 있는 형태로 낸다.
+ *
+ * 기준 주는 weekPeriods 의 마지막(직전 완료 주)이다. 진행 중인 주를 쓰면
+ * 신고 지연 때문에 며칠치만 담겨 주마다 표본 수가 들쭉날쭉해진다.
+ *
+ * @param {Object} rawByDistrict
+ * @param {string[]} weekPeriods  "YYYY-MM-DD~YYYY-MM-DD" (오래된순)
+ * @returns {Object} report
+ */
+export function buildReport(rawByDistrict, weekPeriods) {
+  const period = weekPeriods[weekPeriods.length - 1];
+  const [from, to] = period.split('~').map(d => d.replace(/-/g, ''));
+
+  const pool    = reportPool(rawByDistrict);
+  const inWeek  = pool.filter(r => r.ymd >= from && r.ymd <= to);
+  const before  = pool.filter(r => r.ymd < from);
+
+  // 단지별 과거 최고·최저 — 기준 주 이전 거래로만 만든다
+  const prevMax = new Map(), prevMin = new Map();
+  for (const r of before) {
+    const k = r.aptSeq ?? `${r.name}|${r.district}`;
+    prevMax.set(k, Math.max(prevMax.get(k) ?? -Infinity, r.amount));
+    prevMin.set(k, Math.min(prevMin.get(k) ??  Infinity, r.amount));
+  }
+  const keyOf = r => r.aptSeq ?? `${r.name}|${r.district}`;
+
+  const row = r => ({
+    name: r.name, umd: r.umdNm, district: r.district,
+    amount: r.amount, date: r.ymd,
+  });
+
+  const topPrice = dedupeByComplex(inWeek, r => r.amount)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
+    .map(row);
+
+  const risen = inWeek
+    .map(r => {
+      const p = prevMax.get(keyOf(r));
+      return Number.isFinite(p) && r.amount > p ? { ...r, prev: p, up: r.amount - p } : null;
+    })
+    .filter(Boolean);
+  const topRise = dedupeByComplex(risen, r => r.up)
+    .sort((a, b) => b.up - a.up)
+    .slice(0, 5)
+    .map(r => ({ ...row(r), prev: r.prev, up: r.up }));
+
+  const lows = inWeek
+    .map(r => {
+      const p = prevMin.get(keyOf(r));
+      return Number.isFinite(p) && r.amount < p ? { ...r, prev: p, down: p - r.amount } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.down - a.down);
+  const newLow = lows.length
+    ? { ...row(lows[0]), prev: lows[0].prev, down: lows[0].down, count: lows.length }
+    : null;
+
+  return {
+    period,                       // "YYYY-MM-DD~YYYY-MM-DD" 기준 주
+    areaLabel: '전용 84㎡',
+    scope: '아파트',
+    since: START_YM.slice(0, 4),  // "2022" — 역대가 아니라 이 해 이후라는 표시
+    counts: { week: inWeek.length, pool: pool.length },
+    provisional: true,            // 등기 미완료 거래 포함 → 화면에 "잠정"
+    filters: ['해제 거래 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이후 준공`],
+    topPrice,
+    topRise,
+    newLow,
   };
 }
 
@@ -1718,6 +1877,14 @@ async function main() {
   console.log('\n[ingest] 집계 중...');
   const normalized = buildNormalized(rawByDistrict, monthPeriods, weekPeriods, generatedAt);
 
+  // 리포트는 기존 집계와 분리해서 붙인다 — buildNormalized 의 반환값을
+  // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
+  normalized.report = buildReport(rawByDistrict, weekPeriods);
+  console.log(
+    `[ingest] 리포트 집계 — 기준 주 ${normalized.report.period}, ` +
+    `국평 거래 ${normalized.report.counts.week}건 (전체 풀 ${normalized.report.counts.pool}건)`
+  );
+
   console.log('[ingest] data.js 및 data.json 저장 중...');
   inject(normalized);
 
@@ -1732,11 +1899,14 @@ async function main() {
 // ════════════════════════════════════════════════
 //  진입점
 // ════════════════════════════════════════════════
-if (process.argv.includes('--selftest')) {
-  runSelfTest();
-} else {
-  main().catch(err => {
-    console.error('[ingest] 오류:', err.message);
-    process.exit(1);
-  });
+// import 로 들어온 경우에는 아무것도 실행하지 않는다. 위 isDirectRun 주석 참조.
+if (isDirectRun) {
+  if (process.argv.includes('--selftest')) {
+    runSelfTest();
+  } else {
+    main().catch(err => {
+      console.error('[ingest] 오류:', err.message);
+      process.exit(1);
+    });
+  }
 }
