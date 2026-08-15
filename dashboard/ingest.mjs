@@ -642,8 +642,8 @@ const REPORT_MIN_BUILD_YEAR = 1986;
 /** 각 목록에 표시할 줄 수 */
 const REPORT_TOP_N = 10;
 
-/** ② 거래 1위에서 층위별로 표시할 줄 수 */
-const REPORT_RANK_N = 3;
+/** ② 거래 1위에서 층위별로 표시할 줄 수. 3단 × 5행이면 화면이 차고 순위 흐름이 보인다 */
+const REPORT_RANK_N = 5;
 
 /** 1평 = 3.3058㎡ */
 const PYEONG_M2 = 3.3058;
@@ -843,12 +843,28 @@ function buildRebuildBlock(rebuild) {
   const from = `${REPORT_BASELINE_FROM.slice(0, 4)}-${REPORT_BASELINE_FROM.slice(4, 6)}-${REPORT_BASELINE_FROM.slice(6)}`;
   // 구역명(rgnNm)만으로는 구분이 안 되는 경우가 있다 — 성수전략정비구역 1~4지구는
   // 이름이 같고 PRJC_CD·지번만 다르다. 소재지를 함께 실어야 읽는 사람이 구별한다.
-  const shape = x => ({
-    name: x.rgnNm || x.pstnNm || x.prjcCd,
-    addr: x.rgnNm ? (x.pstnNm ?? null) : null,
-    district: x.district ?? null,
-    date: x.ancmntYmd,
-  });
+  /**
+   * 화면에 찍는 소재지 한 줄.
+   * 자치구는 대개 지번(PSTN_NM) 앞에 이미 들어 있어("강북구 미아동 130번지 일대")
+   * 따로 붙이면 "강북구 · 강북구 미아동 …" 으로 두 번 나온다. 들어 있지 않은 경우
+   * ("봉래동1가 58-4번지 일원")에만 앞에 세운다.
+   * 원본에 자치구가 없는 건(중화6구역 — PSTN_NM 에 구가 없고 LOGVM 이 "서울특별시")은
+   * **지번만 그대로 둔다.** 동 이름으로 구를 유추하면 원본에 없는 값을 만드는 것이다.
+   */
+  const place = (district, addr) => {
+    if (!addr) return district ?? null;
+    return district && !addr.includes(district) ? `${district} ${addr}` : addr;
+  };
+  const shape = x => {
+    const addr = x.rgnNm ? (x.pstnNm ?? null) : null;
+    return {
+      name: x.rgnNm || x.pstnNm || x.prjcCd,
+      addr,
+      district: x.district ?? null,
+      place: place(x.district ?? null, addr),
+      date: x.ancmntYmd,
+    };
+  };
   const inSpan = a => a.filter(x => x.ancmntYmd && x.ancmntYmd >= from);
   const news = inSpan(extractNewDesignations(projects));
   const cancels = inSpan(extractCancellations(projects));

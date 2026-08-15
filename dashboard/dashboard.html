@@ -44,13 +44,11 @@
 .rpt-cols{display:grid; grid-template-columns:1fr 1fr; gap:0 34px; margin-top:22px; align-items:stretch}
 .rpt-col{display:flex; flex-direction:column}
 .rpt-col + .rpt-col{border-left:1px solid var(--rule); padding-left:34px}
-/* 두 칸의 행 수가 크게 다를 때(신고가 10 vs 신저가 4) 나란히 두면 오른쪽 아래가
-   60% 빈 채로 이미지에 남는다. 짧은 쪽을 늘려 맞추면 행 사이가 벌어져 더 깨져 보인다.
-   그래서 **행 수 차이가 2배를 넘으면 두 칸을 세로로 잇는다**(renderReport 가 판단).
-   빈 자리가 사라지고 "신저가는 4건뿐"은 머리글의 "4건 중 4"가 그대로 말해 준다. */
+/* 두 칸의 행 수는 자주 다르다(신고가 10 vs 신저가 4). 짧은 쪽을 늘려 맞추면 행 사이가
+   벌어져 더 깨져 보이므로 위에서부터 쌓고 아래를 비운다. 세로로 잇는 편이 빈 자리는
+   없지만 이미지가 두 배로 길어져 블로그에서 한 화면에 들어가지 않는다 — 2단을 고정한다.
+   "신저가는 4건뿐"이라는 사실은 머리글의 "4건 중 4"가 그대로 말해 준다. */
 .rpt-list{flex:1; display:flex; flex-direction:column; justify-content:flex-start}
-.rpt-cols--stack{grid-template-columns:1fr}
-.rpt-cols--stack .rpt-col + .rpt-col{border-left:0; padding-left:0; margin-top:26px}
 /* ② 는 자치구·법정동·단지 세 층위가 각 3행씩이다. 2단에 몰아 넣으면 한쪽이 비므로
    세 칸으로 균형 있게 편다. 행 형식은 ① 과 같은 것을 쓴다. */
 .rpt-cols--3{grid-template-columns:repeat(3,1fr); gap:0 28px}
@@ -101,10 +99,6 @@
 .rpt-sheet + .rpt-sheet{margin-top:0}
 /* 한 칸 안에 목록을 두 개 세울 때(② 자치구+법정동) 쓰는 간격 */
 .rpt-stack + .rpt-stack{margin-top:20px}
-/* 기간이 다른 장에 붙이는 배지. ②는 신고분이 아니라 누적이라 눈에 띄게 알린다 */
-.rpt-span{display:inline-block; margin-left:9px; padding:3px 9px; border-radius:2px;
-  background:var(--rise); color:#14181F; font-size:12px; font-weight:700;
-  letter-spacing:.01em; vertical-align:middle}
 /* ③ 는 "거래량 및 신고가·신저가" 순이다. 거래량이 머리글 옆 작은 글씨로만 있으면
    순서가 뒤집혀 읽히므로, 유형별 거래량을 목록 위에 큰 숫자로 먼저 세운다. */
 .rpt-vol{display:grid; grid-template-columns:1fr 1fr; gap:0 34px; margin-top:22px;
@@ -333,7 +327,7 @@
         </p>
       </div>
     </div>
-    <div class="rpt-cols" id="rptB1Cols">
+    <div class="rpt-cols">
       <div class="rpt-col rpt-col--price">
         <h3 class="rpt-colhead">신고가 <span id="rptB1HighN">—</span></h3>
         <ol class="rpt-list" id="rptB1Highs"></ol>
@@ -350,7 +344,7 @@
   <div class="rpt-sheet" id="rptBlock2">
     <div class="rpt-head">
       <div>
-        <h2>거래 1위 <span class="rpt-span" id="rptBlock2Span">—</span></h2>
+        <h2>거래 1위</h2>
         <p class="rpt-sub">자치구 · 법정동 · 단지 · 건수 기준 — <b id="rptBlock2SubNote">이 장만 기간이 다릅니다</b></p>
       </div>
       <div class="rpt-meta">
@@ -363,15 +357,15 @@
     </div>
     <div class="rpt-cols rpt-cols--3">
       <div class="rpt-col">
-        <h3 class="rpt-colhead">자치구 <span>TOP 3</span></h3>
+        <h3 class="rpt-colhead">자치구 <span id="rptB2GuN">—</span></h3>
         <ol class="rpt-list" id="rptB2Gu"></ol>
       </div>
       <div class="rpt-col">
-        <h3 class="rpt-colhead">법정동 <span>TOP 3</span></h3>
+        <h3 class="rpt-colhead">법정동 <span id="rptB2UmdN">—</span></h3>
         <ol class="rpt-list" id="rptB2Umd"></ol>
       </div>
       <div class="rpt-col">
-        <h3 class="rpt-colhead">단지 <span>TOP 3</span></h3>
+        <h3 class="rpt-colhead">단지 <span id="rptB2CxN">—</span></h3>
         <ol class="rpt-list" id="rptB2Cx"></ol>
       </div>
     </div>
@@ -458,7 +452,7 @@
      파일이 없으면 목데이터 폴백으로 동작한다.
      ?v= 는 data.js 내용의 sha256 앞 8자 — inject()가 갱신한다. 직접 고치지 말 것.
      브라우저가 낡은 data.js 를 쓰는 것(= 새 화면 + 낡은 숫자)을 막는다. -->
-<script src="data.js?v=eab91531"></script>
+<script src="data.js?v=7a47d739"></script>
 
 <!-- ─────────────────────────────────────────────
   스크립트
@@ -1539,7 +1533,7 @@ function rptZoneRow(x, i) {
       <span class="rpt-rank">${i + 1}</span>
       <span class="rpt-name">${rptEsc(x.name)}</span>
       <span class="rpt-amt" style="font-size:15px">${rptDate(x.date)}</span>
-      ${(x.district || x.addr) ? `<span class="rpt-umd">${rptEsc([x.district, x.addr].filter(Boolean).join(' · '))}${x.zones > 1 ? ` · 구역 ${x.zones}개` : ''}</span>` : ''}
+      ${x.place ? `<span class="rpt-umd">${rptEsc(x.place)}${x.zones > 1 ? ` · 구역 ${x.zones}개` : ''}</span>` : ''}
     </li>`;
 }
 
@@ -1570,16 +1564,14 @@ function rptBasisText(m, parts) {
   return parts.map(k => P[k]).filter(Boolean).join(' · ');
 }
 /**
- * 두 칸의 행 수가 2배 넘게 차이 나면 세로로 잇는다.
- * 나란히 두면 짧은 쪽 아래가 통째로 비어 이미지에 빈 사각형이 남는다.
- * 건수는 매주 달라지므로 고정 레이아웃이 아니라 그때그때 판단한다.
+ * 목록 머리글 옆 표기 — "변동폭 큰 순 · 80건 중 7".
+ * 정렬 기준이 각주에만 있으면 금액이 오르내리는 것이 순서가 뒤죽박죽인 것으로 읽힌다.
+ * 목록 바로 위에 세워 두면 첫 줄을 읽기 전에 무슨 순서인지 알 수 있다.
  */
-function rptBalance(colsId, a, b) {
-  const el = document.getElementById(colsId);
-  if (!el) return;
-  const lo = Math.min(a, b), hi = Math.max(a, b);
-  el.classList.toggle('rpt-cols--stack', hi > 0 && lo * 2 < hi);
+function rptListNote(m, total, cap) {
+  return `${m.sortBy} · ${total}건 중 ${Math.min(total, cap)}`;
 }
+
 function rptHead(id, m, periodText, countText, parts) {
   rptSet(`${id}Period`, periodText);
   rptSet(`${id}Count`, countText);
@@ -1598,19 +1590,19 @@ function renderReport() {
   // ① 아파트
   rptHead('rptBlock1', m, period, `신고분 ${rep.apt.target.toLocaleString('ko-KR')}건`,
           ['baseline', 'target', 'unit', 'excludes', 'gapZero', 'sort', 'lag', 'limit', 'source']);
-  rptSet('rptB1HighN', `${rep.apt.counts.high}건 중 ${Math.min(rep.apt.counts.high, m.topN)}`);
-  rptSet('rptB1LowN',  `${rep.apt.counts.low}건 중 ${Math.min(rep.apt.counts.low, m.topN)}`);
+  rptSet('rptB1HighN', rptListNote(m, rep.apt.counts.high, m.topN));
+  rptSet('rptB1LowN',  rptListNote(m, rep.apt.counts.low,  m.topN));
   rptFill('rptB1Highs', rep.apt.highs, true,  '해당 기간 신고가 없음');
   rptFill('rptB1Lows',  rep.apt.lows,  false, '해당 기간 신저가 없음');
-  rptBalance('rptB1Cols', rep.apt.highs.length, rep.apt.lows.length);
 
   // ② 거래 1위 — 세는 항목이라 신고분이 아니라 기준선 구간 전체가 대상이다.
-  // 나머지 장과 기간이 달라 각주만으로는 부족하다 → 제목 옆 배지로도 알린다.
-  rptSet('rptBlock2Span', m.baselineLabel);
+  // 나머지 장과 기간이 달라 각주만으로는 부족하다 → 부제와 우측 상단에서 알린다.
   rptSet('rptBlock2SubNote',
     `이 장만 기간이 다릅니다 — ${m.baselineLabel} 전체를 셉니다(신고분 아님)`);
   rptHead('rptBlock2', m, m.baselineLabel, `아파트 ${rep.rank.baseline.toLocaleString('ko-KR')}건`,
           ['baseline', 'whole', 'excludes', 'source']);
+  // "TOP 5" 를 손으로 적지 않는다 — rankN 을 바꾸면 머리글이 따라 바뀐다
+  for (const i of ['Gu', 'Umd', 'Cx']) rptSet(`rptB2${i}N`, `TOP ${m.rankN}`);
   rptHtml('rptB2Gu',  rep.rank.district.map(rptRankRow).join(''));
   rptHtml('rptB2Umd', rep.rank.umd.map(rptRankRow).join(''));
   rptHtml('rptB2Cx',  rep.rank.complex.map(rptRankRow).join(''));
@@ -1631,8 +1623,8 @@ function renderReport() {
     rptHtml(`${id}Vol`, `${t.volume.toLocaleString('ko-KR')}<i>건</i>`);
     rptSet(`${id}VolSub`, `${m.baselineLabel} · 이 중 신고분 ${t.target}건`);
     rptSet(`${id}Meta`, `신고분 ${t.target}건`);
-    rptSet(`${id}HighN`, `${t.counts.high}건 중 ${Math.min(t.counts.high, 5)}`);
-    rptSet(`${id}LowN`,  `${t.counts.low}건 중 ${Math.min(t.counts.low, 5)}`);
+    rptSet(`${id}HighN`, rptListNote(m, t.counts.high, 5));
+    rptSet(`${id}LowN`,  rptListNote(m, t.counts.low,  5));
     rptFill(`${id}Highs`, t.highs, true,  '신고가 없음');
     rptFill(`${id}Lows`,  t.lows,  false, '신저가 없음');
   }

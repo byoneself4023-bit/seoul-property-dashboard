@@ -8,10 +8,11 @@
  *
  * 실패하면 무엇이 어떻게 틀렸는지 행 단위로 찍고 exit 1.
  *
- * 1단계 검사 두 종:
- *   [오염] 빠져야 할 거래가 섞이지 않았는가 (취소·직거래·1985년 이전 준공·sh·중복)
+ * 검사 네 종:
+ *   [오염] 빠져야 할 거래가 섞이지 않았는가 (취소·직거래·1986년 이전 준공·sh·중복)
  *   [건수] 화면에 적히는 건수 표기가 실제 집계와 같은가
- * 값 일치·선별 정확성·각주 일치는 2단계에서 붙인다.
+ *   [값]   표시된 여섯 필드가 원본 거래 한 건과 정확히 같은가
+ *   [선별] 신고가로 표시된 건이 실제로 그 단지 그 평형의 기록을 깼는가 (재계산 대조)
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -23,6 +24,9 @@ const CACHE_DIR = join(__dirname, '.cache', 'ingest');
 
 // 전 기간 누적치. ④가 이 값이면 2024-01 필터가 빠진 것이다(실제 사고 이력).
 const REBUILD_ALLTIME = { news: 1037, cancels: 182 };
+
+// 리포트가 거는 준공 하한. ingest 의 REPORT_MIN_BUILD_YEAR 과 같은 값을 여기서 다시 쓴다.
+const MIN_BUILD_YEAR = 1986;
 
 const problems = [];
 const fail = (area, msg) => problems.push(`  [${area}] ${msg}`);
@@ -42,10 +46,46 @@ function loadCache() {
     const m = f.match(/^(\d+)_(\d+)_(\w+)\.json$/);
     if (!m || !(m[3] in byType)) continue;
     for (const it of (JSON.parse(readFileSync(join(CACHE_DIR, f), 'utf8')).items ?? [])) {
-      byType[m[3]].push(it);
+      // 시군구코드를 함께 실어 둔다 — 같은 법정동·단지명이 다른 구에 또 있을 때
+      // 그룹이 섞이는 것을 막는다.
+      byType[m[3]].push({ ...it, _lawd: m[1] });
     }
   }
   return byType;
+}
+
+/**
+ * 선별 검증용 기준선 모집단 — ingest 의 reportRows 와 **같은 조건을 여기서 다시 쓴다.**
+ * 일부러 함수를 공유하지 않는다. 집계 코드를 그대로 불러다 대조하면 같은 버그를
+ * 두 번 실행할 뿐이라 아무것도 검증되지 않는다.
+ */
+function baselineRows(cache, type, baselineFrom) {
+  const out = [];
+  for (const it of cache[type]) {
+    const area = Number(it.area), amount = Number(it.amount);
+    if (!Number.isFinite(area) || area <= 0 || !Number.isFinite(amount)) continue;
+    if (it.cdealType === 'O') continue;
+    if (String(it.dealingGbn ?? '').includes('직거래')) continue;
+    if (!(Number(it.buildYear) >= MIN_BUILD_YEAR)) continue;
+    const ymd = ymdOf(it);
+    if (ymd < baselineFrom) continue;
+    out.push({ lawd: it._lawd, name: it.name, umd: it.umdNm,
+               size: Math.floor(area), area, amount, floor: it.floor, ymd });
+  }
+  return out;
+}
+
+/**
+ * 재수집 대상 월 두 개(직전 완료월 + 당월). 신고분(새로 들어온 거래)은 **반드시**
+ * 이 두 달 안에 계약일이 있다 — 다른 달은 애초에 다시 받지 않으므로 새로 나타날 수 없다.
+ * 선별 검증에서 "직전 기록" 판정의 예외를 이 범위로만 허용한다.
+ */
+function refetchMonths(rows) {
+  const max = rows.reduce((a, r) => (r.ymd > a ? r.ymd : a), '');
+  if (max.length !== 8) return new Set();
+  const y = Number(max.slice(0, 4)), mo = Number(max.slice(4, 6));
+  const prev = mo === 1 ? `${y - 1}12` : `${y}${String(mo - 1).padStart(2, '0')}`;
+  return new Set([max.slice(0, 6), prev]);
 }
 
 const ymdOf = it =>
@@ -183,6 +223,95 @@ function checkCounts(rep) {
   if (rep.apt?.lows?.length > m.topN) fail('건수', `① 신저가 표시가 상한 ${m.topN} 을 넘었다`);
 }
 
+// ════════════════════════════════════════════════
+//  [값] 표시된 여섯 필드가 원본 거래 한 건과 같은가
+// ════════════════════════════════════════════════
+// 오염 검사는 다섯 필드로 후보를 찾을 뿐 층은 보지 않는다. 층이 어긋나면 같은 날
+// 같은 값의 **다른 집**을 가리키게 되므로 여기서 여섯 번째 필드까지 맞춘다.
+function checkValues(rep, cache) {
+  for (const { label, row, types } of displayedRows(rep)) {
+    const exact = findSource(cache, types, row).filter(it => String(it.floor) === String(row.floor));
+    if (!exact.length) {
+      const near = findSource(cache, types, row);
+      fail('값', `${label} "${row.name}"(${row.umd}) — 원본에 일치하는 거래가 없다: ` +
+                 `${row.amount}만원 / ${row.area}㎡ / ${row.floor}층 / ${row.date}` +
+                 (near.length ? ` (층만 다른 후보 ${near.length}건: ${near.map(x => x.floor).join(',')}층)` : ''));
+    }
+  }
+}
+
+// ════════════════════════════════════════════════
+//  [선별] 정말 기록을 깼는가 — 캐시에서 다시 계산해 댄다
+// ════════════════════════════════════════════════
+function checkSelection(rep, cache) {
+  const from = rep.meta?.baselineFrom;
+  if (!from) { fail('선별', 'meta.baselineFrom 이 없다'); return 0; }
+
+  const lists = [
+    ['① 신고가', rep.apt?.highs, 'apt', true],
+    ['① 신저가', rep.apt?.lows, 'apt', false],
+    ['③ 연립다세대 신고가', rep.nonApt?.rh?.highs, 'rh', true],
+    ['③ 연립다세대 신저가', rep.nonApt?.rh?.lows, 'rh', false],
+    ['③ 오피스텔 신고가', rep.nonApt?.offi?.highs, 'offi', true],
+    ['③ 오피스텔 신저가', rep.nonApt?.offi?.lows, 'offi', false],
+  ];
+
+  const pop = {}, window = {};
+  for (const t of ['apt', 'rh', 'offi']) {
+    pop[t] = baselineRows(cache, t, from);
+    window[t] = refetchMonths(pop[t]);
+  }
+
+  let checked = 0;
+  for (const [label, list, type, up] of lists) {
+    for (const row of (list ?? [])) {
+      // 그룹은 시군구 + 단지명 + 법정동 + 평형(전용면적 정수부). 표시 행이 준 정보만 쓴다.
+      const src = pop[type].find(r =>
+        r.name === row.name && r.umd === row.umd && Math.floor(Number(row.area)) === r.size &&
+        r.amount === Number(row.amount) && r.ymd === row.date && String(r.floor) === String(row.floor));
+      if (!src) {
+        fail('선별', `${label} "${row.name}"(${row.umd}) — 기준선 모집단에서 이 거래를 찾지 못했다`);
+        continue;
+      }
+      const g = pop[type].filter(r =>
+        r.lawd === src.lawd && r.name === src.name && r.umd === src.umd && r.size === src.size);
+      checked++;
+
+      // ① 표시된 금액이 그 그룹의 극값인가. 아니면 애초에 기록이 아니다.
+      const extreme = up ? Math.max(...g.map(r => r.amount)) : Math.min(...g.map(r => r.amount));
+      if (extreme !== Number(row.amount)) {
+        fail('선별', `${label} "${row.name}"(${row.umd} ${row.size}㎡) — ` +
+                     `표시 ${row.amount}만원이 그룹 ${up ? '최고' : '최저'} ${extreme}만원이 아니다`);
+        continue;
+      }
+      // ② 직전 기록이 방향에 맞는가
+      if (up ? !(Number(row.prev) < Number(row.amount)) : !(Number(row.prev) > Number(row.amount))) {
+        fail('선별', `${label} "${row.name}" — 직전 기록 ${row.prev}가 이번 ${row.amount}과 방향이 맞지 않는다`);
+        continue;
+      }
+      // ③ 직전 기록이 실재하는 거래 금액인가
+      if (!g.some(r => r.amount === Number(row.prev))) {
+        fail('선별', `${label} "${row.name}"(${row.umd} ${row.size}㎡) — ` +
+                     `직전 기록 ${row.prev}만원에 해당하는 거래가 그룹에 없다`);
+        continue;
+      }
+      // ④ 직전 기록과 이번 사이에 낀 거래는 **신고분일 수 있는 것만** 허용한다.
+      //    재수집 범위 밖(=새로 나타날 수 없는 달)의 거래가 사이에 있으면
+      //    그것이 진짜 직전 기록이므로 prev 가 틀린 것이다.
+      const between = g.filter(r => up
+        ? (r.amount > Number(row.prev) && r.amount < Number(row.amount))
+        : (r.amount < Number(row.prev) && r.amount > Number(row.amount)));
+      const stale = between.filter(r => !window[type].has(r.ymd.slice(0, 6)));
+      if (stale.length) {
+        const s = stale.sort((a, b) => (up ? b.amount - a.amount : a.amount - b.amount))[0];
+        fail('선별', `${label} "${row.name}"(${row.umd} ${row.size}㎡) — 직전 기록이 ${row.prev}만원이 아니다: ` +
+                     `재수집 범위 밖 ${s.ymd} 거래 ${s.amount}만원이 사이에 있다`);
+      }
+    }
+  }
+  return checked;
+}
+
 export function verifyReport() {
   problems.length = 0;
   if (!existsSync(CACHE_DIR)) {
@@ -196,6 +325,8 @@ export function verifyReport() {
   const cache = loadCache();
   checkContamination(rep, cache);
   checkCounts(rep);
+  checkValues(rep, cache);
+  const selected = checkSelection(rep, cache);
 
   const shown = displayedRows(rep).length;
   if (problems.length) {
@@ -209,6 +340,9 @@ export function verifyReport() {
               `취소·직거래·${1986}년 이전 준공·sh 혼입·중복 없음`);
   console.log(`  [건수] 블록별 표시/집계 건수 정합, ② 순위 내림차순, ` +
               `④ 전 기간 누적치(${REBUILD_ALLTIME.news}/${REBUILD_ALLTIME.cancels}) 오용 아님`);
+  console.log(`  [값]   표시 ${shown}건의 단지명·법정동·전용면적·층·금액·날짜가 원본 거래와 일치`);
+  console.log(`  [선별] ${selected}건을 캐시에서 다시 계산 — 그룹 극값 일치, ` +
+              `직전 기록 실재·방향 일치, 사이에 낀 재수집 범위 밖 거래 없음`);
   return true;
 }
 
