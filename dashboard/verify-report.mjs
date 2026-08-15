@@ -13,6 +13,8 @@
  *   [건수] 화면에 적히는 건수 표기가 실제 집계와 같은가
  *   [값]   표시된 여섯 필드가 원본 거래 한 건과 정확히 같은가
  *   [선별] 신고가로 표시된 건이 실제로 그 단지 그 평형의 기록을 깼는가 (재계산 대조)
+ *   [상승률] 화면에 찍힌 두 금액으로 그 비율이 실제로 나오는가
+ *   [추이] 월별 건수가 캐시 재계산과 원소 단위로 같은가 (당월 혼입 포함)
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -312,6 +314,69 @@ function checkSelection(rep, cache) {
   return checked;
 }
 
+// ════════════════════════════════════════════════
+//  [상승률] 화면 안에서 나눗셈이 맞는가
+// ════════════════════════════════════════════════
+// 변동폭과 같은 함정이다 — 원값으로 계산하면 화면의 두 숫자로는 그 비율이 안 나온다.
+function checkPct(rep) {
+  const eok = m => Number((Number(m) / 10000).toFixed(1));
+  for (const { label, row } of displayedRows(rep)) {
+    if (typeof row.pct !== 'number') { fail('상승률', `${label} "${row.name}" — pct 가 없다`); continue; }
+    const want = Number(((eok(row.amount) - eok(row.prev)) / eok(row.prev) * 100).toFixed(1));
+    if (Math.abs(want - row.pct) > 0.05) {
+      fail('상승률', `${label} "${row.name}" — 표시 ${eok(row.prev)} → ${eok(row.amount)} 이면 ` +
+                     `${want}% 인데 ${row.pct}% 로 적혀 있다`);
+    }
+  }
+}
+
+// ════════════════════════════════════════════════
+//  [추이] 월별 건수를 캐시에서 다시 세어 원소 단위로 댄다
+// ════════════════════════════════════════════════
+function checkTrend(rep, cache) {
+  const t = rep.trend;
+  if (!t) { fail('추이', 'report.trend 가 없다'); return 0; }
+  const from = rep.meta?.baselineFrom;
+
+  let cells = 0;
+  for (const key of ['apt', 'rh', 'offi']) {
+    const mine = {};
+    for (const r of baselineRows(cache, key, from)) {
+      const ym = `${r.ymd.slice(0, 4)}-${r.ymd.slice(4, 6)}`;
+      mine[ym] = (mine[ym] ?? 0) + 1;
+    }
+    // 진행 중인 당월은 리포트가 버린다 — 검증도 같은 달을 버리되, **버렸는지 확인한다**
+    const all = Object.keys(mine).sort();
+    const dropped = all.at(-1);
+    if (t.months.includes(dropped)) {
+      fail('추이', `${key} — 진행 중인 당월 ${dropped} 이 추이에 남아 있다(부분값)`);
+    }
+    const want = all.slice(0, -1);
+    if (want.join() !== t.months.join()) {
+      fail('추이', `${key} — 월 목록이 다르다: 리포트 ${t.months.length}개(${t.months[0]}~${t.months.at(-1)}) ` +
+                   `vs 재계산 ${want.length}개(${want[0]}~${want.at(-1)})`);
+      continue;
+    }
+    t.months.forEach((ym, i) => {
+      cells++;
+      if ((t[key] ?? [])[i] !== (mine[ym] ?? 0)) {
+        fail('추이', `${key} ${ym} — 리포트 ${(t[key] ?? [])[i]}건 vs 재계산 ${mine[ym] ?? 0}건`);
+      }
+    });
+  }
+
+  // 장끼리 숫자가 맞는가 — 추이 합계 + 버린 당월 = ③ 의 거래량 / ② 의 기준선
+  const totals = { apt: rep.rank?.baseline, rh: rep.nonApt?.rh?.volume, offi: rep.nonApt?.offi?.volume };
+  for (const key of ['apt', 'rh', 'offi']) {
+    const sum = (t[key] ?? []).reduce((a, b) => a + b, 0);
+    if (!Number.isInteger(totals[key])) continue;
+    if (sum > totals[key]) {
+      fail('추이', `${key} — 추이 합계 ${sum}건이 집계 ${totals[key]}건보다 많다`);
+    }
+  }
+  return cells;
+}
+
 export function verifyReport() {
   problems.length = 0;
   if (!existsSync(CACHE_DIR)) {
@@ -327,6 +392,8 @@ export function verifyReport() {
   checkCounts(rep);
   checkValues(rep, cache);
   const selected = checkSelection(rep, cache);
+  checkPct(rep);
+  const cells = checkTrend(rep, cache);
 
   const shown = displayedRows(rep).length;
   if (problems.length) {
@@ -343,6 +410,9 @@ export function verifyReport() {
   console.log(`  [값]   표시 ${shown}건의 단지명·법정동·전용면적·층·금액·날짜가 원본 거래와 일치`);
   console.log(`  [선별] ${selected}건을 캐시에서 다시 계산 — 그룹 극값 일치, ` +
               `직전 기록 실재·방향 일치, 사이에 낀 재수집 범위 밖 거래 없음`);
+  console.log(`  [상승률] 표시 ${shown}건의 상승률이 화면의 두 금액과 나눗셈으로 일치`);
+  console.log(`  [추이] 월별 ${cells}칸을 캐시에서 다시 세어 원소 단위 일치, ` +
+              `진행 중인 당월 미포함, 합계가 ②③ 집계 이내`);
   return true;
 }
 

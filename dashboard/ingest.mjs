@@ -738,6 +738,9 @@ function outRow(r, prev, gap) {
     name: r.name, umd: r.umd, district: r.district, size: r.size,
     area: r.area, floor: r.floor, amount: r.amount, date: r.ymd,
     prev, gap,
+    // 상승률도 **화면에 찍는 두 금액**으로 계산한다. 원값으로 계산하면
+    // 화면의 "11.1 → 13.8" 과 "+24.3%" 가 나눗셈으로 맞지 않는다(변동폭과 같은 이유).
+    pct: Number(((eok1(r.amount) - eok1(prev)) / eok1(prev) * 100).toFixed(1)),
   };
 }
 
@@ -835,6 +838,36 @@ function rankCounts(rows) {
   };
 }
 
+/**
+ * ⑤ 월별 거래량 추이 — 계약월별 건수를 유형 세 갈래로 센다.
+ * 모집단은 ② 와 같은 기준선 구간이라 유형별 합계가 ③ 의 거래량과 정확히 맞는다.
+ *
+ * **마지막 달은 버린다.** 수집은 항상 진행 중인 당월을 포함하므로 마지막 버킷은
+ * 언제나 부분값이다(실측: 2026-08 이 364건 — 다른 달의 8%). 그대로 그리면 폭락으로 읽힌다.
+ *
+ * **남은 마지막 두 달은 잠정으로 표시한다.** 재수집 범위가 최근 2개월이라 그 구간은
+ * 아직 신고분이 차오르는 중이다. 표시가 없으면 미신고분이 거래 감소로 보인다.
+ */
+const REPORT_TREND_PROVISIONAL = 2;
+
+function buildTrend(series) {
+  const counts = {};
+  const all = new Set();
+  for (const [key, rows] of Object.entries(series)) {
+    counts[key] = {};
+    for (const r of rows) {
+      const ym = `${r.ymd.slice(0, 4)}-${r.ymd.slice(4, 6)}`;
+      counts[key][ym] = (counts[key][ym] ?? 0) + 1;
+      all.add(ym);
+    }
+  }
+  const months = [...all].sort();
+  const dropped = months.pop() ?? null;   // 진행 중인 당월
+  const out = { months, dropped, provisional: Math.min(REPORT_TREND_PROVISIONAL, months.length) };
+  for (const key of Object.keys(series)) out[key] = months.map(m => counts[key][m] ?? 0);
+  return out;
+}
+
 /** ④ 정비사업 — 캐시가 없으면 null. 없다고 실패시키지 않는다(월 1회 수동 수집). */
 function buildRebuildBlock(rebuild) {
   if (!rebuild) return null;
@@ -909,6 +942,8 @@ export function buildReportMeta(deltaCount) {
     rankN: REPORT_RANK_N,
     provisional: true,
     gapZero: '표시상 변동폭이 0.0억인 건 제외',
+    pctNote: '상승률은 표시된 두 금액으로 계산',
+    trendNote: '계약월 기준 · 진행 중인 당월 제외 · 최근 2개월은 신고 지연으로 아직 차오르는 중(잠정)',
     // 출처는 블록마다 다르다. ①②③ 은 실거래, ④ 는 정비사업 고시다.
     // 둘을 한 문자열로 묶으면 네 장 모두에 해당 없는 출처가 하나씩 붙는다.
     sourceTrade: '국토교통부 RTMS 실거래가',
@@ -983,6 +1018,8 @@ export function buildReport(rawByDistrict, rebuild) {
     },
     // ④ 정비사업
     rebuild: buildRebuildBlock(rebuild),
+    // ⑤ 월별 거래량 추이 — ② 와 같은 모집단
+    trend: buildTrend({ apt: aptRows, rh: rhRows, offi: offiRows }),
   };
 }
 

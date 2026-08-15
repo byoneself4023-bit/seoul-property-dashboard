@@ -20,12 +20,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD = pathToFileURL(join(__dirname, 'dashboard.html')).href;
 const OUT_DIR = join(__dirname, 'out');
 
-// 파일명 앞에 항목 번호를 둔다 — 폴더에서 정렬하면 리포트 순서 그대로 선다.
+// 발행 주기로 폴더를 가른다. ①②③⑤ 는 매번 나가고 ④ 정비사업은 월 1회다
+// (고시 데이터라 주 단위로는 거의 바뀌지 않고, 수집도 아직 수동이다).
+// 폴더가 갈려 있으면 발행할 때 "이번에 무엇을 올리는가"를 헷갈릴 일이 없다.
+// 파일명 앞 번호는 폴더 안에서 정렬하면 리포트 순서 그대로 선다.
 const BLOCKS = [
-  { id: 'rptBlock1', file: '01-신고가신저가.png' },
-  { id: 'rptBlock2', file: '02-거래1위.png' },
-  { id: 'rptBlock3', file: '03-비아파트.png' },
-  { id: 'rptBlock4', file: '04-정비사업.png' },
+  { id: 'rptBlock1', file: '매주/01-신고가신저가.png' },
+  { id: 'rptBlock2', file: '매주/02-거래1위.png' },
+  { id: 'rptBlock3', file: '매주/03-비아파트.png' },
+  { id: 'rptBlock5', file: '매주/04-거래량추이.png' },
+  { id: 'rptBlock4', file: '월간/정비사업.png' },
 ];
 
 async function render() {
@@ -60,6 +64,7 @@ async function render() {
       throw new Error(`블록이 그려지지 않았다: #${id} (${box?.width}×${box?.height})`);
     }
     const path = join(OUT_DIR, file);
+    mkdirSync(dirname(path), { recursive: true });
     await el.screenshot({ path });
     saved.push({ file, w: Math.round(box.width), h: Math.round(box.height), path });
   }
