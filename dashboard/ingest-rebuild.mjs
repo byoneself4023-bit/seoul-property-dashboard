@@ -15,11 +15,26 @@
  *   SEOUL_OPENAPI_KEY  서울 열린데이터광장 인증키 (URL-encoded 없는 원문)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 이 파일이 `node ingest-rebuild.mjs` 로 직접 실행됐는가.
+ * ingest.mjs 와 같은 이유다 — import 만으로 main() 이 돌면 안 된다(2026-08-12 사고).
+ * import.meta.main 은 Node 24+ 전용이라 러너(Node 22)에서 항상 false 가 되므로 쓰지 않는다.
+ */
+const isDirectRun = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+})();
 
 // ════════════════════════════════════════════════
 //  .env 자동 로드 (ingest.mjs 와 동일 방식)
@@ -731,11 +746,14 @@ async function main() {
 // ════════════════════════════════════════════════
 //  진입점
 // ════════════════════════════════════════════════
-if (process.argv.includes('--selftest')) {
-  runSelfTest();
-} else {
-  main().catch(err => {
-    console.error('[ingest-rebuild] 오류:', err.message);
-    process.exit(1);
-  });
+// import 로 들어온 경우에는 아무것도 실행하지 않는다.
+if (isDirectRun) {
+  if (process.argv.includes('--selftest')) {
+    runSelfTest();
+  } else {
+    main().catch(err => {
+      console.error('[ingest-rebuild] 오류:', err.message);
+      process.exit(1);
+    });
+  }
 }
