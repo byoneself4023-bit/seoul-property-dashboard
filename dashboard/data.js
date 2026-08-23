@@ -1,12 +1,11 @@
 // 자동 생성 파일 — 직접 수정하지 마세요. dashboard/ingest.mjs 의 inject()가 씁니다.
-// 생성: 2026-08-16
+// 생성: 2026-08-23
 window.__DASHBOARD_DATA__ = {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-16",
+  "generatedAt": "2026-08-23",
   "source": "rtms",
   "periods": {
     "week": [
-      "2026-05-18~2026-05-24",
       "2026-05-25~2026-05-31",
       "2026-06-01~2026-06-07",
       "2026-06-08~2026-06-14",
@@ -17,7 +16,8 @@ window.__DASHBOARD_DATA__ = {
       "2026-07-13~2026-07-19",
       "2026-07-20~2026-07-26",
       "2026-07-27~2026-08-02",
-      "2026-08-03~2026-08-09"
+      "2026-08-03~2026-08-09",
+      "2026-08-10~2026-08-16"
     ],
     "month": [
       "2022-01",
@@ -837,35 +837,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 35,
-          "nonApt": 85,
+          "apt": 37,
+          "nonApt": 92,
           "room": {
             "studio": 30,
-            "two": 28,
-            "three": 49
+            "two": 32,
+            "three": 52
           },
           "price": {
             "under3": 23,
-            "under6": 32,
-            "over6": 30
+            "under6": 34,
+            "over6": 35
           }
         }
       ],
       "week": [
-        {
-          "apt": 41,
-          "nonApt": 26,
-          "room": {
-            "studio": 34,
-            "two": 10,
-            "three": 19
-          },
-          "price": {
-            "under3": 8,
-            "under6": 9,
-            "over6": 9
-          }
-        },
         {
           "apt": 17,
           "nonApt": 19,
@@ -952,24 +938,24 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 12,
-          "nonApt": 29,
+          "nonApt": 30,
           "room": {
             "studio": 10,
-            "two": 12,
+            "two": 13,
             "three": 15
           },
           "price": {
             "under3": 12,
-            "under6": 8,
+            "under6": 9,
             "over6": 9
           }
         },
         {
-          "apt": 9,
+          "apt": 10,
           "nonApt": 19,
           "room": {
             "studio": 5,
-            "two": 7,
+            "two": 8,
             "three": 14
           },
           "price": {
@@ -979,22 +965,22 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 4,
-          "nonApt": 12,
+          "apt": 5,
+          "nonApt": 17,
           "room": {
             "studio": 4,
-            "two": 5,
-            "three": 6
+            "two": 7,
+            "three": 9
           },
           "price": {
             "under3": 1,
-            "under6": 8,
-            "over6": 3
+            "under6": 9,
+            "over6": 7
           }
         },
         {
           "apt": 4,
-          "nonApt": 13,
+          "nonApt": 14,
           "room": {
             "studio": 5,
             "two": 4,
@@ -1003,21 +989,35 @@ window.__DASHBOARD_DATA__ = {
           "price": {
             "under3": 5,
             "under6": 2,
-            "over6": 6
+            "over6": 7
           }
         },
         {
-          "apt": 0,
-          "nonApt": 7,
+          "apt": 1,
+          "nonApt": 10,
           "room": {
-            "studio": 3,
-            "two": 3,
-            "three": 0
+            "studio": 4,
+            "two": 4,
+            "three": 2
           },
           "price": {
-            "under3": 3,
-            "under6": 3,
-            "over6": 1
+            "under3": 4,
+            "under6": 4,
+            "over6": 2
+          }
+        },
+        {
+          "apt": 2,
+          "nonApt": 7,
+          "room": {
+            "studio": 6,
+            "two": 1,
+            "three": 2
+          },
+          "price": {
+            "under3": 5,
+            "under6": 2,
+            "over6": 0
           }
         }
       ]
@@ -1781,35 +1781,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 73,
-          "nonApt": 52,
+          "apt": 77,
+          "nonApt": 54,
           "room": {
-            "studio": 43,
-            "two": 38,
-            "three": 42
+            "studio": 44,
+            "two": 41,
+            "three": 44
           },
           "price": {
             "under3": 13,
             "under6": 25,
-            "over6": 14
+            "over6": 16
           }
         }
       ],
       "week": [
-        {
-          "apt": 38,
-          "nonApt": 35,
-          "room": {
-            "studio": 21,
-            "two": 12,
-            "three": 28
-          },
-          "price": {
-            "under3": 12,
-            "under6": 10,
-            "over6": 13
-          }
-        },
         {
           "apt": 15,
           "nonApt": 27,
@@ -1909,11 +1895,11 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 16,
+          "apt": 17,
           "nonApt": 14,
           "room": {
             "studio": 6,
-            "two": 11,
+            "two": 12,
             "three": 12
           },
           "price": {
@@ -1923,45 +1909,59 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 18,
-          "nonApt": 10,
+          "apt": 20,
+          "nonApt": 11,
           "room": {
             "studio": 13,
-            "two": 8,
-            "three": 7
+            "two": 10,
+            "three": 8
           },
           "price": {
             "under3": 1,
             "under6": 6,
-            "over6": 3
+            "over6": 4
           }
         },
         {
-          "apt": 9,
-          "nonApt": 8,
+          "apt": 10,
+          "nonApt": 11,
           "room": {
-            "studio": 6,
+            "studio": 9,
             "two": 5,
-            "three": 6
+            "three": 7
           },
           "price": {
             "under3": 2,
-            "under6": 4,
-            "over6": 2
+            "under6": 5,
+            "over6": 4
           }
         },
         {
-          "apt": 4,
-          "nonApt": 4,
+          "apt": 5,
+          "nonApt": 6,
           "room": {
-            "studio": 3,
-            "two": 3,
-            "three": 2
+            "studio": 4,
+            "two": 4,
+            "three": 3
           },
           "price": {
-            "under3": 1,
+            "under3": 2,
             "under6": 3,
-            "over6": 0
+            "over6": 1
+          }
+        },
+        {
+          "apt": 6,
+          "nonApt": 5,
+          "room": {
+            "studio": 4,
+            "two": 3,
+            "three": 4
+          },
+          "price": {
+            "under3": 2,
+            "under6": 2,
+            "over6": 1
           }
         }
       ]
@@ -2725,35 +2725,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 60,
-          "nonApt": 81,
+          "apt": 65,
+          "nonApt": 85,
           "room": {
-            "studio": 36,
-            "two": 32,
-            "three": 63
+            "studio": 39,
+            "two": 36,
+            "three": 64
           },
           "price": {
-            "under3": 11,
+            "under3": 12,
             "under6": 13,
-            "over6": 57
+            "over6": 60
           }
         }
       ],
       "week": [
-        {
-          "apt": 42,
-          "nonApt": 21,
-          "room": {
-            "studio": 9,
-            "two": 16,
-            "three": 32
-          },
-          "price": {
-            "under3": 0,
-            "under6": 8,
-            "over6": 13
-          }
-        },
         {
           "apt": 42,
           "nonApt": 31,
@@ -2825,25 +2811,25 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 20,
-          "nonApt": 21,
+          "apt": 21,
+          "nonApt": 22,
           "room": {
             "studio": 8,
-            "two": 8,
-            "three": 21
+            "two": 9,
+            "three": 22
           },
           "price": {
             "under3": 2,
             "under6": 1,
-            "over6": 18
+            "over6": 19
           }
         },
         {
-          "apt": 23,
+          "apt": 24,
           "nonApt": 25,
           "room": {
             "studio": 11,
-            "two": 14,
+            "two": 15,
             "three": 21
           },
           "price": {
@@ -2868,44 +2854,58 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 7,
-          "nonApt": 14,
+          "nonApt": 16,
           "room": {
-            "studio": 11,
+            "studio": 13,
             "two": 4,
             "three": 4
           },
           "price": {
-            "under3": 2,
+            "under3": 3,
             "under6": 3,
-            "over6": 9
+            "over6": 10
           }
         },
         {
-          "apt": 4,
-          "nonApt": 5,
+          "apt": 7,
+          "nonApt": 6,
           "room": {
-            "studio": 1,
-            "two": 3,
+            "studio": 2,
+            "two": 5,
             "three": 5
           },
           "price": {
             "under3": 0,
             "under6": 0,
-            "over6": 5
+            "over6": 6
           }
         },
         {
-          "apt": 4,
-          "nonApt": 3,
+          "apt": 5,
+          "nonApt": 5,
           "room": {
-            "studio": 2,
+            "studio": 3,
             "two": 2,
-            "three": 2
+            "three": 3
           },
           "price": {
             "under3": 0,
-            "under6": 0,
-            "over6": 3
+            "under6": 1,
+            "over6": 4
+          }
+        },
+        {
+          "apt": 1,
+          "nonApt": 2,
+          "room": {
+            "studio": 1,
+            "two": 0,
+            "three": 1
+          },
+          "price": {
+            "under3": 0,
+            "under6": 1,
+            "over6": 1
           }
         }
       ]
@@ -3669,35 +3669,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 92,
-          "nonApt": 53,
+          "apt": 94,
+          "nonApt": 62,
           "room": {
-            "studio": 29,
-            "two": 53,
-            "three": 54
+            "studio": 30,
+            "two": 56,
+            "three": 55
           },
           "price": {
             "under3": 18,
-            "under6": 16,
-            "over6": 19
+            "under6": 19,
+            "over6": 25
           }
         }
       ],
       "week": [
-        {
-          "apt": 41,
-          "nonApt": 15,
-          "room": {
-            "studio": 11,
-            "two": 21,
-            "three": 24
-          },
-          "price": {
-            "under3": 8,
-            "under6": 3,
-            "over6": 4
-          }
-        },
         {
           "apt": 55,
           "nonApt": 9,
@@ -3784,21 +3770,21 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 30,
-          "nonApt": 14,
+          "nonApt": 17,
           "room": {
             "studio": 8,
-            "two": 15,
+            "two": 16,
             "three": 19
           },
           "price": {
             "under3": 5,
-            "under6": 4,
-            "over6": 5
+            "under6": 5,
+            "over6": 7
           }
         },
         {
           "apt": 21,
-          "nonApt": 13,
+          "nonApt": 15,
           "room": {
             "studio": 7,
             "two": 11,
@@ -3807,49 +3793,63 @@ window.__DASHBOARD_DATA__ = {
           "price": {
             "under3": 4,
             "under6": 2,
-            "over6": 7
+            "over6": 9
           }
         },
         {
-          "apt": 19,
-          "nonApt": 13,
+          "apt": 20,
+          "nonApt": 16,
           "room": {
             "studio": 7,
-            "two": 12,
+            "two": 14,
             "three": 12
           },
           "price": {
             "under3": 4,
-            "under6": 6,
-            "over6": 3
+            "under6": 7,
+            "over6": 5
           }
         },
         {
-          "apt": 6,
-          "nonApt": 5,
+          "apt": 9,
+          "nonApt": 7,
           "room": {
-            "studio": 4,
+            "studio": 5,
             "two": 2,
-            "three": 4
+            "three": 7
           },
           "price": {
             "under3": 2,
-            "under6": 2,
-            "over6": 1
+            "under6": 3,
+            "over6": 2
           }
         },
         {
-          "apt": 6,
+          "apt": 12,
+          "nonApt": 3,
+          "room": {
+            "studio": 2,
+            "two": 7,
+            "three": 6
+          },
+          "price": {
+            "under3": 3,
+            "under6": 0,
+            "over6": 0
+          }
+        },
+        {
+          "apt": 2,
           "nonApt": 2,
           "room": {
             "studio": 2,
-            "two": 4,
-            "three": 2
+            "two": 1,
+            "three": 1
           },
           "price": {
-            "under3": 2,
+            "under3": 1,
             "under6": 0,
-            "over6": 0
+            "over6": 1
           }
         }
       ]
@@ -4613,35 +4613,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 72,
-          "nonApt": 252,
+          "apt": 77,
+          "nonApt": 272,
           "room": {
-            "studio": 125,
-            "two": 92,
-            "three": 79
+            "studio": 132,
+            "two": 97,
+            "three": 86
           },
           "price": {
-            "under3": 45,
-            "under6": 113,
-            "over6": 94
+            "under3": 50,
+            "under6": 118,
+            "over6": 104
           }
         }
       ],
       "week": [
-        {
-          "apt": 46,
-          "nonApt": 65,
-          "room": {
-            "studio": 35,
-            "two": 38,
-            "three": 31
-          },
-          "price": {
-            "under3": 12,
-            "under6": 31,
-            "over6": 22
-          }
-        },
         {
           "apt": 32,
           "nonApt": 62,
@@ -4742,57 +4728,71 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 17,
-          "nonApt": 54,
+          "nonApt": 56,
           "room": {
             "studio": 22,
             "two": 25,
-            "three": 16
+            "three": 17
           },
           "price": {
             "under3": 13,
-            "under6": 21,
-            "over6": 20
+            "under6": 22,
+            "over6": 21
           }
         },
         {
-          "apt": 11,
-          "nonApt": 35,
+          "apt": 12,
+          "nonApt": 47,
           "room": {
-            "studio": 20,
-            "two": 14,
-            "three": 10
+            "studio": 24,
+            "two": 16,
+            "three": 13
           },
           "price": {
-            "under3": 10,
-            "under6": 16,
-            "over6": 9
+            "under3": 13,
+            "under6": 18,
+            "over6": 16
           }
         },
         {
-          "apt": 10,
-          "nonApt": 20,
+          "apt": 15,
+          "nonApt": 26,
           "room": {
-            "studio": 14,
-            "two": 7,
-            "three": 9
+            "studio": 17,
+            "two": 11,
+            "three": 12
           },
           "price": {
-            "under3": 6,
+            "under3": 8,
+            "under6": 12,
+            "over6": 6
+          }
+        },
+        {
+          "apt": 3,
+          "nonApt": 16,
+          "room": {
+            "studio": 10,
+            "two": 3,
+            "three": 4
+          },
+          "price": {
+            "under3": 2,
             "under6": 10,
             "over6": 4
           }
         },
         {
           "apt": 2,
-          "nonApt": 11,
+          "nonApt": 18,
           "room": {
-            "studio": 6,
+            "studio": 14,
             "two": 3,
-            "three": 2
+            "three": 3
           },
           "price": {
-            "under3": 2,
-            "under6": 6,
+            "under3": 8,
+            "under6": 7,
             "over6": 3
           }
         }
@@ -5557,35 +5557,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 208,
-          "nonApt": 105,
+          "apt": 220,
+          "nonApt": 116,
           "room": {
-            "studio": 70,
-            "two": 88,
-            "three": 135
+            "studio": 73,
+            "two": 99,
+            "three": 142
           },
           "price": {
-            "under3": 41,
-            "under6": 39,
-            "over6": 25
+            "under3": 43,
+            "under6": 45,
+            "over6": 28
           }
         }
       ],
       "week": [
-        {
-          "apt": 79,
-          "nonApt": 25,
-          "room": {
-            "studio": 16,
-            "two": 28,
-            "three": 56
-          },
-          "price": {
-            "under3": 7,
-            "under6": 14,
-            "over6": 4
-          }
-        },
         {
           "apt": 74,
           "nonApt": 23,
@@ -5657,11 +5643,11 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 63,
+          "apt": 64,
           "nonApt": 24,
           "room": {
             "studio": 15,
-            "two": 27,
+            "two": 28,
             "three": 40
           },
           "price": {
@@ -5671,12 +5657,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 61,
+          "apt": 63,
           "nonApt": 40,
           "room": {
             "studio": 26,
-            "two": 24,
-            "three": 43
+            "two": 25,
+            "three": 44
           },
           "price": {
             "under3": 16,
@@ -5685,59 +5671,73 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 39,
-          "nonApt": 18,
+          "apt": 40,
+          "nonApt": 19,
           "room": {
             "studio": 7,
-            "two": 18,
-            "three": 28
+            "two": 19,
+            "three": 29
           },
           "price": {
             "under3": 9,
-            "under6": 5,
+            "under6": 6,
             "over6": 4
           }
         },
         {
-          "apt": 44,
-          "nonApt": 18,
+          "apt": 47,
+          "nonApt": 25,
           "room": {
-            "studio": 17,
-            "two": 18,
-            "three": 23
+            "studio": 20,
+            "two": 20,
+            "three": 26
           },
           "price": {
-            "under3": 7,
-            "under6": 7,
-            "over6": 4
+            "under3": 9,
+            "under6": 9,
+            "over6": 7
           }
         },
         {
-          "apt": 30,
-          "nonApt": 16,
+          "apt": 40,
+          "nonApt": 22,
           "room": {
-            "studio": 14,
-            "two": 12,
-            "three": 18
+            "studio": 15,
+            "two": 21,
+            "three": 24
           },
           "price": {
-            "under3": 6,
-            "under6": 8,
+            "under3": 8,
+            "under6": 12,
             "over6": 2
           }
         },
         {
-          "apt": 15,
+          "apt": 24,
           "nonApt": 7,
           "room": {
             "studio": 4,
-            "two": 9,
-            "three": 9
+            "two": 11,
+            "three": 16
           },
           "price": {
             "under3": 3,
             "under6": 3,
             "over6": 1
+          }
+        },
+        {
+          "apt": 12,
+          "nonApt": 9,
+          "room": {
+            "studio": 7,
+            "two": 3,
+            "three": 10
+          },
+          "price": {
+            "under3": 6,
+            "under6": 1,
+            "over6": 2
           }
         }
       ]
@@ -6501,35 +6501,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 498,
-          "nonApt": 189,
+          "apt": 502,
+          "nonApt": 199,
           "room": {
-            "studio": 404,
-            "two": 151,
-            "three": 121
+            "studio": 410,
+            "two": 156,
+            "three": 123
           },
           "price": {
-            "under3": 58,
-            "under6": 121,
-            "over6": 10
+            "under3": 64,
+            "under6": 124,
+            "over6": 11
           }
         }
       ],
       "week": [
-        {
-          "apt": 63,
-          "nonApt": 53,
-          "room": {
-            "studio": 27,
-            "two": 36,
-            "three": 50
-          },
-          "price": {
-            "under3": 14,
-            "under6": 34,
-            "over6": 5
-          }
-        },
         {
           "apt": 56,
           "nonApt": 57,
@@ -6630,58 +6616,72 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 52,
-          "nonApt": 44,
+          "nonApt": 49,
           "room": {
-            "studio": 21,
+            "studio": 25,
             "two": 41,
             "three": 31
           },
           "price": {
-            "under3": 13,
+            "under3": 17,
             "under6": 28,
-            "over6": 3
+            "over6": 4
           }
         },
         {
-          "apt": 40,
-          "nonApt": 34,
+          "apt": 42,
+          "nonApt": 37,
           "room": {
-            "studio": 20,
-            "two": 30,
-            "three": 23
+            "studio": 21,
+            "two": 33,
+            "three": 24
           },
           "price": {
-            "under3": 9,
-            "under6": 23,
+            "under3": 10,
+            "under6": 25,
             "over6": 2
           }
         },
         {
-          "apt": 51,
-          "nonApt": 21,
+          "apt": 55,
+          "nonApt": 23,
           "room": {
-            "studio": 31,
-            "two": 21,
+            "studio": 33,
+            "two": 24,
+            "three": 20
+          },
+          "price": {
+            "under3": 5,
+            "under6": 16,
+            "over6": 2
+          }
+        },
+        {
+          "apt": 25,
+          "nonApt": 41,
+          "room": {
+            "studio": 30,
+            "two": 16,
             "three": 19
           },
           "price": {
-            "under3": 4,
-            "under6": 15,
-            "over6": 2
+            "under3": 22,
+            "under6": 18,
+            "over6": 1
           }
         },
         {
-          "apt": 22,
-          "nonApt": 35,
+          "apt": 24,
+          "nonApt": 13,
           "room": {
-            "studio": 29,
+            "studio": 13,
             "two": 11,
-            "three": 17
+            "three": 13
           },
           "price": {
-            "under3": 20,
-            "under6": 15,
-            "over6": 0
+            "under3": 7,
+            "under6": 5,
+            "over6": 1
           }
         }
       ]
@@ -7445,35 +7445,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 299,
-          "nonApt": 160,
+          "apt": 313,
+          "nonApt": 173,
           "room": {
-            "studio": 59,
-            "two": 189,
-            "three": 181
+            "studio": 65,
+            "two": 200,
+            "three": 190
           },
           "price": {
-            "under3": 42,
-            "under6": 78,
-            "over6": 40
+            "under3": 45,
+            "under6": 83,
+            "over6": 45
           }
         }
       ],
       "week": [
-        {
-          "apt": 114,
-          "nonApt": 37,
-          "room": {
-            "studio": 9,
-            "two": 50,
-            "three": 82
-          },
-          "price": {
-            "under3": 5,
-            "under6": 16,
-            "over6": 16
-          }
-        },
         {
           "apt": 90,
           "nonApt": 55,
@@ -7573,59 +7559,73 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 63,
-          "nonApt": 27,
+          "apt": 64,
+          "nonApt": 28,
           "room": {
-            "studio": 7,
+            "studio": 8,
             "two": 33,
-            "three": 45
+            "three": 46
           },
           "price": {
             "under3": 5,
             "under6": 15,
-            "over6": 7
+            "over6": 8
           }
         },
         {
-          "apt": 60,
-          "nonApt": 32,
+          "apt": 66,
+          "nonApt": 39,
           "room": {
-            "studio": 12,
-            "two": 39,
-            "three": 37
+            "studio": 16,
+            "two": 44,
+            "three": 40
           },
           "price": {
-            "under3": 9,
-            "under6": 20,
-            "over6": 3
+            "under3": 11,
+            "under6": 23,
+            "over6": 5
           }
         },
         {
-          "apt": 40,
-          "nonApt": 28,
+          "apt": 50,
+          "nonApt": 34,
           "room": {
-            "studio": 11,
-            "two": 25,
-            "three": 28
+            "studio": 13,
+            "two": 33,
+            "three": 34
           },
           "price": {
-            "under3": 9,
-            "under6": 12,
-            "over6": 7
+            "under3": 10,
+            "under6": 14,
+            "over6": 10
           }
         },
         {
-          "apt": 29,
-          "nonApt": 16,
+          "apt": 45,
+          "nonApt": 22,
           "room": {
             "studio": 5,
-            "two": 19,
-            "three": 19
+            "two": 28,
+            "three": 31
           },
           "price": {
-            "under3": 5,
-            "under6": 6,
+            "under3": 9,
+            "under6": 8,
             "over6": 5
+          }
+        },
+        {
+          "apt": 9,
+          "nonApt": 11,
+          "room": {
+            "studio": 3,
+            "two": 9,
+            "three": 7
+          },
+          "price": {
+            "under3": 2,
+            "under6": 6,
+            "over6": 3
           }
         }
       ]
@@ -8389,35 +8389,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 124,
-          "nonApt": 146,
+          "apt": 129,
+          "nonApt": 151,
           "room": {
-            "studio": 64,
-            "two": 110,
-            "three": 87
+            "studio": 66,
+            "two": 114,
+            "three": 90
           },
           "price": {
-            "under3": 91,
+            "under3": 95,
             "under6": 52,
-            "over6": 3
+            "over6": 4
           }
         }
       ],
       "week": [
-        {
-          "apt": 41,
-          "nonApt": 36,
-          "room": {
-            "studio": 11,
-            "two": 38,
-            "three": 25
-          },
-          "price": {
-            "under3": 18,
-            "under6": 17,
-            "over6": 1
-          }
-        },
         {
           "apt": 47,
           "nonApt": 53,
@@ -8489,12 +8475,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 24,
+          "apt": 25,
           "nonApt": 36,
           "room": {
             "studio": 9,
             "two": 31,
-            "three": 19
+            "three": 20
           },
           "price": {
             "under3": 22,
@@ -8518,57 +8504,71 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 31,
-          "nonApt": 30,
+          "nonApt": 31,
           "room": {
-            "studio": 13,
+            "studio": 14,
             "two": 20,
             "three": 24
           },
           "price": {
-            "under3": 17,
+            "under3": 18,
             "under6": 13,
             "over6": 0
           }
         },
         {
-          "apt": 27,
-          "nonApt": 32,
+          "apt": 29,
+          "nonApt": 35,
           "room": {
-            "studio": 8,
-            "two": 29,
-            "three": 21
+            "studio": 9,
+            "two": 32,
+            "three": 22
           },
           "price": {
-            "under3": 18,
+            "under3": 21,
             "under6": 13,
             "over6": 1
           }
         },
         {
-          "apt": 31,
-          "nonApt": 22,
+          "apt": 34,
+          "nonApt": 23,
           "room": {
             "studio": 12,
-            "two": 19,
-            "three": 20
+            "two": 20,
+            "three": 22
           },
           "price": {
             "under3": 12,
             "under6": 9,
-            "over6": 1
+            "over6": 2
           }
         },
         {
-          "apt": 6,
-          "nonApt": 14,
+          "apt": 9,
+          "nonApt": 19,
           "room": {
-            "studio": 4,
-            "two": 9,
-            "three": 6
+            "studio": 6,
+            "two": 11,
+            "three": 10
           },
           "price": {
-            "under3": 9,
-            "under6": 5,
+            "under3": 13,
+            "under6": 6,
+            "over6": 0
+          }
+        },
+        {
+          "apt": 8,
+          "nonApt": 16,
+          "room": {
+            "studio": 7,
+            "two": 8,
+            "three": 7
+          },
+          "price": {
+            "under3": 13,
+            "under6": 3,
             "over6": 0
           }
         }
@@ -9333,35 +9333,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 254,
-          "nonApt": 129,
+          "apt": 269,
+          "nonApt": 141,
           "room": {
-            "studio": 58,
-            "two": 151,
-            "three": 173
+            "studio": 69,
+            "two": 158,
+            "three": 182
           },
           "price": {
-            "under3": 83,
-            "under6": 45,
+            "under3": 91,
+            "under6": 49,
             "over6": 1
           }
         }
       ],
       "week": [
-        {
-          "apt": 78,
-          "nonApt": 32,
-          "room": {
-            "studio": 15,
-            "two": 41,
-            "three": 51
-          },
-          "price": {
-            "under3": 13,
-            "under6": 17,
-            "over6": 2
-          }
-        },
         {
           "apt": 60,
           "nonApt": 61,
@@ -9448,71 +9434,85 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 59,
-          "nonApt": 44,
+          "nonApt": 45,
           "room": {
             "studio": 11,
-            "two": 44,
+            "two": 45,
             "three": 47
           },
           "price": {
             "under3": 23,
-            "under6": 21,
+            "under6": 22,
             "over6": 0
           }
         },
         {
-          "apt": 66,
-          "nonApt": 19,
+          "apt": 65,
+          "nonApt": 20,
+          "room": {
+            "studio": 15,
+            "two": 30,
+            "three": 40
+          },
+          "price": {
+            "under3": 17,
+            "under6": 3,
+            "over6": 0
+          }
+        },
+        {
+          "apt": 48,
+          "nonApt": 41,
+          "room": {
+            "studio": 17,
+            "two": 39,
+            "three": 33
+          },
+          "price": {
+            "under3": 19,
+            "under6": 21,
+            "over6": 1
+          }
+        },
+        {
+          "apt": 62,
+          "nonApt": 23,
           "room": {
             "studio": 14,
             "two": 30,
             "three": 41
           },
           "price": {
-            "under3": 16,
-            "under6": 3,
+            "under3": 21,
+            "under6": 2,
             "over6": 0
           }
         },
         {
-          "apt": 40,
-          "nonApt": 35,
+          "apt": 36,
+          "nonApt": 11,
           "room": {
-            "studio": 12,
-            "two": 34,
-            "three": 29
+            "studio": 4,
+            "two": 18,
+            "three": 24
           },
           "price": {
-            "under3": 16,
-            "under6": 18,
+            "under3": 7,
+            "under6": 3,
             "over6": 1
           }
         },
         {
-          "apt": 54,
-          "nonApt": 19,
-          "room": {
-            "studio": 9,
-            "two": 29,
-            "three": 35
-          },
-          "price": {
-            "under3": 17,
-            "under6": 2,
-            "over6": 0
-          }
-        },
-        {
-          "apt": 27,
+          "apt": 41,
           "nonApt": 6,
           "room": {
-            "studio": 3,
-            "two": 13,
-            "three": 17
+            "studio": 7,
+            "two": 10,
+            "three": 30
           },
           "price": {
-            "under3": 4,
-            "under6": 2,
+            "under3": 6,
+            "under6": 0,
             "over6": 0
           }
         }
@@ -10277,35 +10277,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 637,
-          "nonApt": 48,
+          "apt": 689,
+          "nonApt": 57,
           "room": {
-            "studio": 73,
-            "two": 374,
-            "three": 232
+            "studio": 76,
+            "two": 411,
+            "three": 253
           },
           "price": {
-            "under3": 26,
-            "under6": 15,
+            "under3": 29,
+            "under6": 21,
             "over6": 7
           }
         }
       ],
       "week": [
-        {
-          "apt": 182,
-          "nonApt": 7,
-          "room": {
-            "studio": 23,
-            "two": 109,
-            "three": 57
-          },
-          "price": {
-            "under3": 4,
-            "under6": 3,
-            "over6": 0
-          }
-        },
         {
           "apt": 235,
           "nonApt": 17,
@@ -10377,12 +10363,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 149,
+          "apt": 150,
           "nonApt": 15,
           "room": {
             "studio": 20,
             "two": 89,
-            "three": 54
+            "three": 55
           },
           "price": {
             "under3": 7,
@@ -10391,12 +10377,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 182,
+          "apt": 184,
           "nonApt": 13,
           "room": {
             "studio": 19,
-            "two": 102,
-            "three": 72
+            "two": 103,
+            "three": 73
           },
           "price": {
             "under3": 6,
@@ -10405,58 +10391,72 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 115,
-          "nonApt": 10,
+          "apt": 119,
+          "nonApt": 13,
           "room": {
-            "studio": 14,
-            "two": 67,
-            "three": 43
+            "studio": 15,
+            "two": 69,
+            "three": 47
           },
           "price": {
             "under3": 7,
-            "under6": 3,
+            "under6": 6,
             "over6": 0
           }
         },
         {
-          "apt": 138,
-          "nonApt": 6,
+          "apt": 156,
+          "nonApt": 11,
           "room": {
-            "studio": 12,
-            "two": 79,
-            "three": 51
-          },
-          "price": {
-            "under3": 2,
-            "under6": 1,
-            "over6": 3
-          }
-        },
-        {
-          "apt": 90,
-          "nonApt": 8,
-          "room": {
-            "studio": 13,
-            "two": 59,
-            "three": 26
+            "studio": 14,
+            "two": 91,
+            "three": 60
           },
           "price": {
             "under3": 5,
             "under6": 3,
+            "over6": 3
+          }
+        },
+        {
+          "apt": 126,
+          "nonApt": 10,
+          "room": {
+            "studio": 14,
+            "two": 88,
+            "three": 34
+          },
+          "price": {
+            "under3": 5,
+            "under6": 5,
             "over6": 0
           }
         },
         {
-          "apt": 27,
-          "nonApt": 2,
+          "apt": 90,
+          "nonApt": 4,
           "room": {
-            "studio": 3,
-            "two": 16,
-            "three": 10
+            "studio": 15,
+            "two": 43,
+            "three": 36
           },
           "price": {
-            "under3": 1,
+            "under3": 3,
             "under6": 1,
+            "over6": 0
+          }
+        },
+        {
+          "apt": 16,
+          "nonApt": 3,
+          "room": {
+            "studio": 1,
+            "two": 13,
+            "three": 5
+          },
+          "price": {
+            "under3": 3,
+            "under6": 0,
             "over6": 0
           }
         }
@@ -11221,35 +11221,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 269,
-          "nonApt": 296,
+          "apt": 278,
+          "nonApt": 312,
           "room": {
-            "studio": 118,
-            "two": 217,
-            "three": 223
+            "studio": 123,
+            "two": 225,
+            "three": 232
           },
           "price": {
-            "under3": 155,
-            "under6": 128,
-            "over6": 13
+            "under3": 160,
+            "under6": 136,
+            "over6": 16
           }
         }
       ],
       "week": [
-        {
-          "apt": 97,
-          "nonApt": 68,
-          "room": {
-            "studio": 40,
-            "two": 48,
-            "three": 77
-          },
-          "price": {
-            "under3": 46,
-            "under6": 19,
-            "over6": 3
-          }
-        },
         {
           "apt": 72,
           "nonApt": 53,
@@ -11349,58 +11335,72 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 68,
-          "nonApt": 62,
+          "apt": 69,
+          "nonApt": 63,
           "room": {
             "studio": 27,
-            "two": 44,
-            "three": 59
+            "two": 45,
+            "three": 60
           },
           "price": {
-            "under3": 39,
+            "under3": 40,
             "under6": 23,
             "over6": 0
           }
         },
         {
-          "apt": 50,
-          "nonApt": 61,
+          "apt": 55,
+          "nonApt": 70,
           "room": {
-            "studio": 20,
-            "two": 48,
-            "three": 42
+            "studio": 22,
+            "two": 54,
+            "three": 47
           },
           "price": {
-            "under3": 31,
-            "under6": 26,
+            "under3": 33,
+            "under6": 32,
+            "over6": 5
+          }
+        },
+        {
+          "apt": 50,
+          "nonApt": 74,
+          "room": {
+            "studio": 36,
+            "two": 44,
+            "three": 39
+          },
+          "price": {
+            "under3": 32,
+            "under6": 38,
             "over6": 4
           }
         },
         {
-          "apt": 44,
-          "nonApt": 66,
+          "apt": 34,
+          "nonApt": 39,
           "room": {
-            "studio": 33,
-            "two": 40,
-            "three": 34
+            "studio": 15,
+            "two": 29,
+            "three": 28
           },
           "price": {
-            "under3": 29,
-            "under6": 35,
-            "over6": 2
+            "under3": 16,
+            "under6": 23,
+            "over6": 0
           }
         },
         {
-          "apt": 25,
-          "nonApt": 36,
+          "apt": 34,
+          "nonApt": 21,
           "room": {
-            "studio": 15,
+            "studio": 10,
             "two": 25,
-            "three": 20
+            "three": 19
           },
           "price": {
-            "under3": 15,
-            "under6": 21,
+            "under3": 12,
+            "under6": 9,
             "over6": 0
           }
         }
@@ -12165,35 +12165,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 225,
-          "nonApt": 117,
+          "apt": 234,
+          "nonApt": 128,
           "room": {
-            "studio": 63,
-            "two": 114,
-            "three": 152
+            "studio": 69,
+            "two": 118,
+            "three": 161
           },
           "price": {
-            "under3": 54,
-            "under6": 44,
-            "over6": 19
+            "under3": 63,
+            "under6": 45,
+            "over6": 20
           }
         }
       ],
       "week": [
-        {
-          "apt": 58,
-          "nonApt": 57,
-          "room": {
-            "studio": 44,
-            "two": 25,
-            "three": 44
-          },
-          "price": {
-            "under3": 10,
-            "under6": 44,
-            "over6": 3
-          }
-        },
         {
           "apt": 58,
           "nonApt": 18,
@@ -12266,14 +12252,14 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 48,
-          "nonApt": 24,
+          "nonApt": 26,
           "room": {
             "studio": 5,
             "two": 26,
-            "three": 36
+            "three": 38
           },
           "price": {
-            "under3": 7,
+            "under3": 9,
             "under6": 11,
             "over6": 6
           }
@@ -12307,45 +12293,59 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 50,
-          "nonApt": 17,
+          "apt": 53,
+          "nonApt": 26,
           "room": {
-            "studio": 11,
-            "two": 21,
-            "three": 34
+            "studio": 17,
+            "two": 23,
+            "three": 37
           },
           "price": {
-            "under3": 7,
-            "under6": 8,
-            "over6": 2
+            "under3": 14,
+            "under6": 9,
+            "over6": 3
           }
         },
         {
-          "apt": 34,
-          "nonApt": 13,
+          "apt": 40,
+          "nonApt": 15,
           "room": {
-            "studio": 7,
-            "two": 17,
-            "three": 21
+            "studio": 8,
+            "two": 19,
+            "three": 25
           },
           "price": {
             "under3": 5,
-            "under6": 6,
-            "over6": 2
+            "under6": 7,
+            "over6": 3
           }
         },
         {
-          "apt": 13,
-          "nonApt": 17,
+          "apt": 18,
+          "nonApt": 18,
           "room": {
             "studio": 10,
-            "two": 14,
-            "three": 4
+            "two": 15,
+            "three": 9
           },
           "price": {
             "under3": 9,
-            "under6": 4,
+            "under6": 5,
             "over6": 4
+          }
+        },
+        {
+          "apt": 20,
+          "nonApt": 8,
+          "room": {
+            "studio": 5,
+            "two": 12,
+            "three": 9
+          },
+          "price": {
+            "under3": 3,
+            "under6": 2,
+            "over6": 3
           }
         }
       ]
@@ -13109,35 +13109,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 122,
-          "nonApt": 150,
+          "apt": 137,
+          "nonApt": 160,
           "room": {
-            "studio": 102,
-            "two": 80,
-            "three": 86
+            "studio": 105,
+            "two": 88,
+            "three": 100
           },
           "price": {
-            "under3": 63,
-            "under6": 60,
-            "over6": 27
+            "under3": 64,
+            "under6": 67,
+            "over6": 29
           }
         }
       ],
       "week": [
-        {
-          "apt": 59,
-          "nonApt": 45,
-          "room": {
-            "studio": 25,
-            "two": 31,
-            "three": 45
-          },
-          "price": {
-            "under3": 13,
-            "under6": 25,
-            "over6": 7
-          }
-        },
         {
           "apt": 65,
           "nonApt": 38,
@@ -13209,12 +13195,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 36,
+          "apt": 37,
           "nonApt": 52,
           "room": {
             "studio": 35,
             "two": 24,
-            "three": 25
+            "three": 26
           },
           "price": {
             "under3": 29,
@@ -13237,59 +13223,73 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 29,
-          "nonApt": 29,
+          "apt": 32,
+          "nonApt": 30,
           "room": {
             "studio": 23,
-            "two": 17,
-            "three": 18
+            "two": 18,
+            "three": 21
           },
           "price": {
             "under3": 12,
-            "under6": 14,
+            "under6": 15,
             "over6": 3
           }
         },
         {
-          "apt": 14,
-          "nonApt": 34,
+          "apt": 18,
+          "nonApt": 37,
           "room": {
-            "studio": 22,
-            "two": 17,
-            "three": 7
+            "studio": 23,
+            "two": 18,
+            "three": 12
           },
           "price": {
-            "under3": 13,
-            "under6": 16,
-            "over6": 5
+            "under3": 14,
+            "under6": 17,
+            "over6": 6
           }
         },
         {
-          "apt": 18,
-          "nonApt": 14,
+          "apt": 27,
+          "nonApt": 22,
           "room": {
-            "studio": 13,
-            "two": 9,
-            "three": 10
+            "studio": 18,
+            "two": 15,
+            "three": 16
           },
           "price": {
             "under3": 8,
-            "under6": 6,
-            "over6": 0
+            "under6": 12,
+            "over6": 2
           }
         },
         {
-          "apt": 8,
-          "nonApt": 20,
+          "apt": 13,
+          "nonApt": 30,
+          "room": {
+            "studio": 14,
+            "two": 14,
+            "three": 13
+          },
+          "price": {
+            "under3": 12,
+            "under6": 9,
+            "over6": 9
+          }
+        },
+        {
+          "apt": 2,
+          "nonApt": 14,
           "room": {
             "studio": 11,
-            "two": 7,
-            "three": 9
+            "two": 3,
+            "three": 2
           },
           "price": {
             "under3": 9,
-            "under6": 7,
-            "over6": 4
+            "under6": 5,
+            "over6": 0
           }
         }
       ]
@@ -14053,35 +14053,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 221,
-          "nonApt": 135,
+          "apt": 227,
+          "nonApt": 148,
           "room": {
-            "studio": 64,
-            "two": 115,
-            "three": 175
+            "studio": 69,
+            "two": 121,
+            "three": 183
           },
           "price": {
-            "under3": 64,
-            "under6": 48,
-            "over6": 23
+            "under3": 67,
+            "under6": 56,
+            "over6": 25
           }
         }
       ],
       "week": [
-        {
-          "apt": 73,
-          "nonApt": 34,
-          "room": {
-            "studio": 16,
-            "two": 30,
-            "three": 59
-          },
-          "price": {
-            "under3": 19,
-            "under6": 10,
-            "over6": 5
-          }
-        },
         {
           "apt": 79,
           "nonApt": 31,
@@ -14168,16 +14154,16 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 78,
-          "nonApt": 30,
+          "nonApt": 33,
           "room": {
-            "studio": 16,
+            "studio": 18,
             "two": 38,
-            "three": 53
+            "three": 54
           },
           "price": {
-            "under3": 10,
-            "under6": 14,
-            "over6": 6
+            "under3": 11,
+            "under6": 15,
+            "over6": 7
           }
         },
         {
@@ -14195,44 +14181,58 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 30,
-          "nonApt": 31,
+          "apt": 36,
+          "nonApt": 34,
           "room": {
-            "studio": 12,
-            "two": 20,
-            "three": 29
+            "studio": 14,
+            "two": 22,
+            "three": 34
           },
           "price": {
             "under3": 14,
-            "under6": 12,
+            "under6": 15,
             "over6": 5
           }
         },
         {
           "apt": 51,
-          "nonApt": 24,
+          "nonApt": 31,
           "room": {
-            "studio": 8,
-            "two": 25,
-            "three": 42
+            "studio": 9,
+            "two": 29,
+            "three": 44
           },
           "price": {
-            "under3": 10,
-            "under6": 10,
-            "over6": 4
+            "under3": 12,
+            "under6": 14,
+            "over6": 5
           }
         },
         {
-          "apt": 22,
-          "nonApt": 13,
+          "apt": 24,
+          "nonApt": 18,
           "room": {
-            "studio": 4,
-            "two": 16,
-            "three": 15
+            "studio": 6,
+            "two": 20,
+            "three": 16
           },
           "price": {
-            "under3": 9,
-            "under6": 2,
+            "under3": 11,
+            "under6": 4,
+            "over6": 3
+          }
+        },
+        {
+          "apt": 11,
+          "nonApt": 12,
+          "room": {
+            "studio": 3,
+            "two": 9,
+            "three": 11
+          },
+          "price": {
+            "under3": 4,
+            "under6": 6,
             "over6": 2
           }
         }
@@ -14997,35 +14997,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 348,
-          "nonApt": 307,
+          "apt": 377,
+          "nonApt": 327,
           "room": {
-            "studio": 227,
-            "two": 209,
-            "three": 216
+            "studio": 238,
+            "two": 230,
+            "three": 232
           },
           "price": {
-            "under3": 257,
-            "under6": 43,
-            "over6": 7
+            "under3": 271,
+            "under6": 47,
+            "over6": 9
           }
         }
       ],
       "week": [
-        {
-          "apt": 134,
-          "nonApt": 73,
-          "room": {
-            "studio": 65,
-            "two": 49,
-            "three": 90
-          },
-          "price": {
-            "under3": 62,
-            "under6": 8,
-            "over6": 3
-          }
-        },
         {
           "apt": 142,
           "nonApt": 69,
@@ -15111,73 +15097,87 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 100,
-          "nonApt": 71,
+          "apt": 102,
+          "nonApt": 72,
           "room": {
-            "studio": 51,
-            "two": 59,
-            "three": 60
+            "studio": 52,
+            "two": 60,
+            "three": 61
           },
           "price": {
-            "under3": 59,
+            "under3": 60,
             "under6": 10,
             "over6": 2
           }
         },
         {
-          "apt": 70,
-          "nonApt": 62,
+          "apt": 75,
+          "nonApt": 64,
           "room": {
             "studio": 39,
-            "two": 49,
-            "three": 44
+            "two": 54,
+            "three": 46
           },
           "price": {
-            "under3": 50,
-            "under6": 11,
+            "under3": 51,
+            "under6": 12,
             "over6": 1
           }
         },
         {
-          "apt": 64,
-          "nonApt": 72,
+          "apt": 72,
+          "nonApt": 81,
           "room": {
-            "studio": 54,
-            "two": 36,
-            "three": 46
+            "studio": 60,
+            "two": 41,
+            "three": 51
           },
           "price": {
-            "under3": 56,
-            "under6": 14,
+            "under3": 63,
+            "under6": 15,
+            "over6": 3
+          }
+        },
+        {
+          "apt": 71,
+          "nonApt": 73,
+          "room": {
+            "studio": 55,
+            "two": 44,
+            "three": 44
+          },
+          "price": {
+            "under3": 66,
+            "under6": 5,
             "over6": 2
           }
         },
         {
           "apt": 55,
-          "nonApt": 64,
+          "nonApt": 29,
           "room": {
-            "studio": 51,
-            "two": 33,
-            "three": 34
+            "studio": 25,
+            "two": 25,
+            "three": 33
           },
           "price": {
-            "under3": 60,
-            "under6": 3,
-            "over6": 1
+            "under3": 25,
+            "under6": 2,
+            "over6": 2
           }
         },
         {
-          "apt": 42,
-          "nonApt": 20,
+          "apt": 27,
+          "nonApt": 43,
           "room": {
-            "studio": 19,
-            "two": 19,
-            "three": 24
+            "studio": 33,
+            "two": 25,
+            "three": 12
           },
           "price": {
-            "under3": 19,
-            "under6": 0,
-            "over6": 1
+            "under3": 38,
+            "under6": 5,
+            "over6": 0
           }
         }
       ]
@@ -15941,35 +15941,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 336,
-          "nonApt": 127,
+          "apt": 354,
+          "nonApt": 134,
           "room": {
-            "studio": 70,
-            "two": 189,
-            "three": 199
+            "studio": 71,
+            "two": 205,
+            "three": 207
           },
           "price": {
-            "under3": 89,
-            "under6": 29,
+            "under3": 93,
+            "under6": 32,
             "over6": 9
           }
         }
       ],
       "week": [
-        {
-          "apt": 369,
-          "nonApt": 28,
-          "room": {
-            "studio": 236,
-            "two": 64,
-            "three": 96
-          },
-          "price": {
-            "under3": 19,
-            "under6": 6,
-            "over6": 3
-          }
-        },
         {
           "apt": 77,
           "nonApt": 66,
@@ -16042,25 +16028,25 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 90,
-          "nonApt": 51,
+          "nonApt": 52,
           "room": {
             "studio": 30,
-            "two": 42,
+            "two": 43,
             "three": 68
           },
           "price": {
             "under3": 41,
-            "under6": 5,
+            "under6": 6,
             "over6": 5
           }
         },
         {
-          "apt": 94,
+          "apt": 95,
           "nonApt": 24,
           "room": {
             "studio": 12,
             "two": 60,
-            "three": 45
+            "three": 46
           },
           "price": {
             "under3": 17,
@@ -16069,58 +16055,72 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 71,
-          "nonApt": 31,
+          "apt": 74,
+          "nonApt": 32,
           "room": {
             "studio": 15,
-            "two": 46,
-            "three": 40
+            "two": 49,
+            "three": 41
           },
           "price": {
-            "under3": 21,
+            "under3": 22,
             "under6": 10,
             "over6": 0
           }
         },
         {
-          "apt": 63,
-          "nonApt": 27,
+          "apt": 67,
+          "nonApt": 29,
           "room": {
             "studio": 20,
-            "two": 34,
-            "three": 35
+            "two": 36,
+            "three": 39
           },
           "price": {
-            "under3": 16,
+            "under3": 18,
             "under6": 9,
             "over6": 2
           }
         },
         {
-          "apt": 39,
-          "nonApt": 14,
+          "apt": 52,
+          "nonApt": 19,
           "room": {
-            "studio": 5,
-            "two": 18,
-            "three": 29
+            "studio": 6,
+            "two": 30,
+            "three": 34
           },
           "price": {
-            "under3": 11,
-            "under6": 3,
+            "under3": 12,
+            "under6": 7,
             "over6": 0
           }
         },
         {
-          "apt": 21,
-          "nonApt": 10,
+          "apt": 32,
+          "nonApt": 12,
           "room": {
-            "studio": 8,
-            "two": 7,
-            "three": 16
+            "studio": 9,
+            "two": 13,
+            "three": 22
           },
           "price": {
-            "under3": 7,
+            "under3": 8,
             "under6": 3,
+            "over6": 1
+          }
+        },
+        {
+          "apt": 30,
+          "nonApt": 22,
+          "room": {
+            "studio": 15,
+            "two": 18,
+            "three": 19
+          },
+          "price": {
+            "under3": 17,
+            "under6": 5,
             "over6": 0
           }
         }
@@ -16885,35 +16885,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 115,
-          "nonApt": 120,
+          "apt": 122,
+          "nonApt": 124,
           "room": {
-            "studio": 62,
-            "two": 95,
-            "three": 75
+            "studio": 64,
+            "two": 100,
+            "three": 79
           },
           "price": {
-            "under3": 73,
-            "under6": 45,
+            "under3": 75,
+            "under6": 47,
             "over6": 2
           }
         }
       ],
       "week": [
-        {
-          "apt": 32,
-          "nonApt": 27,
-          "room": {
-            "studio": 15,
-            "two": 23,
-            "three": 21
-          },
-          "price": {
-            "under3": 17,
-            "under6": 10,
-            "over6": 0
-          }
-        },
         {
           "apt": 39,
           "nonApt": 28,
@@ -17027,44 +17013,58 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 20,
-          "nonApt": 26,
+          "apt": 21,
+          "nonApt": 30,
           "room": {
-            "studio": 9,
-            "two": 24,
-            "three": 12
+            "studio": 11,
+            "two": 26,
+            "three": 13
           },
           "price": {
-            "under3": 17,
-            "under6": 9,
+            "under3": 19,
+            "under6": 11,
             "over6": 0
           }
         },
         {
-          "apt": 26,
-          "nonApt": 23,
+          "apt": 34,
+          "nonApt": 24,
           "room": {
             "studio": 14,
-            "two": 19,
-            "three": 16
+            "two": 25,
+            "three": 19
           },
           "price": {
-            "under3": 16,
+            "under3": 17,
             "under6": 7,
             "over6": 0
           }
         },
         {
-          "apt": 5,
-          "nonApt": 2,
+          "apt": 12,
+          "nonApt": 9,
           "room": {
-            "studio": 2,
-            "two": 3,
-            "three": 2
+            "studio": 7,
+            "two": 10,
+            "three": 4
           },
           "price": {
-            "under3": 1,
-            "under6": 1,
+            "under3": 5,
+            "under6": 3,
+            "over6": 1
+          }
+        },
+        {
+          "apt": 22,
+          "nonApt": 6,
+          "room": {
+            "studio": 4,
+            "two": 10,
+            "three": 14
+          },
+          "price": {
+            "under3": 3,
+            "under6": 3,
             "over6": 0
           }
         }
@@ -17829,35 +17829,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 229,
-          "nonApt": 191,
+          "apt": 250,
+          "nonApt": 207,
           "room": {
-            "studio": 126,
-            "two": 108,
-            "three": 171
+            "studio": 137,
+            "two": 115,
+            "three": 186
           },
           "price": {
-            "under3": 64,
-            "under6": 63,
-            "over6": 64
+            "under3": 71,
+            "under6": 67,
+            "over6": 69
           }
         }
       ],
       "week": [
-        {
-          "apt": 75,
-          "nonApt": 68,
-          "room": {
-            "studio": 48,
-            "two": 34,
-            "three": 57
-          },
-          "price": {
-            "under3": 22,
-            "under6": 32,
-            "over6": 14
-          }
-        },
         {
           "apt": 73,
           "nonApt": 47,
@@ -17944,72 +17930,86 @@ window.__DASHBOARD_DATA__ = {
         },
         {
           "apt": 76,
-          "nonApt": 47,
+          "nonApt": 48,
           "room": {
-            "studio": 28,
+            "studio": 29,
             "two": 44,
             "three": 47
           },
           "price": {
             "under3": 14,
-            "under6": 14,
+            "under6": 15,
             "over6": 19
           }
         },
         {
-          "apt": 47,
-          "nonApt": 45,
+          "apt": 49,
+          "nonApt": 47,
           "room": {
             "studio": 34,
-            "two": 19,
-            "three": 37
+            "two": 20,
+            "three": 39
           },
           "price": {
             "under3": 19,
             "under6": 12,
+            "over6": 16
+          }
+        },
+        {
+          "apt": 61,
+          "nonApt": 49,
+          "room": {
+            "studio": 35,
+            "two": 30,
+            "three": 41
+          },
+          "price": {
+            "under3": 15,
+            "under6": 22,
+            "over6": 12
+          }
+        },
+        {
+          "apt": 24,
+          "nonApt": 33,
+          "room": {
+            "studio": 17,
+            "two": 7,
+            "three": 26
+          },
+          "price": {
+            "under3": 11,
+            "under6": 8,
             "over6": 14
           }
         },
         {
-          "apt": 49,
-          "nonApt": 46,
+          "apt": 20,
+          "nonApt": 23,
           "room": {
-            "studio": 32,
-            "two": 27,
-            "three": 33
+            "studio": 13,
+            "two": 10,
+            "three": 17
           },
           "price": {
-            "under3": 14,
-            "under6": 21,
-            "over6": 11
+            "under3": 9,
+            "under6": 6,
+            "over6": 8
           }
         },
         {
-          "apt": 16,
-          "nonApt": 22,
+          "apt": 15,
+          "nonApt": 13,
           "room": {
-            "studio": 9,
-            "two": 4,
-            "three": 20
+            "studio": 10,
+            "two": 6,
+            "three": 10
           },
           "price": {
             "under3": 5,
-            "under6": 6,
-            "over6": 11
-          }
-        },
-        {
-          "apt": 12,
-          "nonApt": 10,
-          "room": {
-            "studio": 5,
-            "two": 3,
-            "three": 11
-          },
-          "price": {
-            "under3": 3,
-            "under6": 1,
-            "over6": 6
+            "under6": 3,
+            "over6": 5
           }
         }
       ]
@@ -18773,35 +18773,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 208,
-          "nonApt": 144,
+          "apt": 228,
+          "nonApt": 155,
           "room": {
-            "studio": 114,
-            "two": 91,
-            "three": 139
+            "studio": 117,
+            "two": 104,
+            "three": 151
           },
           "price": {
             "under3": 21,
-            "under6": 58,
-            "over6": 65
+            "under6": 64,
+            "over6": 70
           }
         }
       ],
       "week": [
-        {
-          "apt": 89,
-          "nonApt": 56,
-          "room": {
-            "studio": 25,
-            "two": 53,
-            "three": 65
-          },
-          "price": {
-            "under3": 7,
-            "under6": 24,
-            "over6": 25
-          }
-        },
         {
           "apt": 79,
           "nonApt": 51,
@@ -18887,12 +18873,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 40,
+          "apt": 41,
           "nonApt": 42,
           "room": {
             "studio": 14,
             "two": 21,
-            "three": 45
+            "three": 46
           },
           "price": {
             "under3": 7,
@@ -18901,59 +18887,73 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 28,
-          "nonApt": 33,
+          "apt": 30,
+          "nonApt": 35,
           "room": {
-            "studio": 12,
-            "two": 23,
+            "studio": 13,
+            "two": 25,
             "three": 25
           },
           "price": {
             "under3": 4,
             "under6": 14,
-            "over6": 15
+            "over6": 17
           }
         },
         {
-          "apt": 30,
-          "nonApt": 26,
+          "apt": 37,
+          "nonApt": 32,
           "room": {
-            "studio": 8,
-            "two": 16,
-            "three": 32
+            "studio": 9,
+            "two": 23,
+            "three": 36
           },
           "price": {
             "under3": 3,
-            "under6": 16,
-            "over6": 7
+            "under6": 20,
+            "over6": 9
           }
         },
         {
-          "apt": 81,
-          "nonApt": 23,
+          "apt": 93,
+          "nonApt": 27,
           "room": {
-            "studio": 73,
-            "two": 13,
-            "three": 17
+            "studio": 74,
+            "two": 20,
+            "three": 24
           },
           "price": {
             "under3": 3,
-            "under6": 12,
+            "under6": 15,
+            "over6": 9
+          }
+        },
+        {
+          "apt": 7,
+          "nonApt": 18,
+          "room": {
+            "studio": 9,
+            "two": 5,
+            "three": 7
+          },
+          "price": {
+            "under3": 4,
+            "under6": 6,
             "over6": 8
           }
         },
         {
-          "apt": 3,
-          "nonApt": 14,
+          "apt": 14,
+          "nonApt": 7,
           "room": {
-            "studio": 7,
-            "two": 3,
-            "three": 3
+            "studio": 2,
+            "two": 10,
+            "three": 9
           },
           "price": {
-            "under3": 2,
-            "under6": 5,
-            "over6": 7
+            "under3": 3,
+            "under6": 1,
+            "over6": 3
           }
         }
       ]
@@ -19717,35 +19717,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 189,
-          "nonApt": 160,
+          "apt": 199,
+          "nonApt": 171,
           "room": {
-            "studio": 71,
-            "two": 131,
-            "three": 131
+            "studio": 74,
+            "two": 141,
+            "three": 139
           },
           "price": {
-            "under3": 82,
-            "under6": 61,
+            "under3": 91,
+            "under6": 63,
             "over6": 17
           }
         }
       ],
       "week": [
-        {
-          "apt": 86,
-          "nonApt": 84,
-          "room": {
-            "studio": 34,
-            "two": 67,
-            "three": 67
-          },
-          "price": {
-            "under3": 37,
-            "under6": 39,
-            "over6": 8
-          }
-        },
         {
           "apt": 59,
           "nonApt": 44,
@@ -19817,15 +19803,15 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 50,
-          "nonApt": 37,
+          "apt": 51,
+          "nonApt": 38,
           "room": {
             "studio": 14,
-            "two": 28,
-            "three": 35
+            "two": 29,
+            "three": 36
           },
           "price": {
-            "under3": 17,
+            "under3": 18,
             "under6": 13,
             "over6": 7
           }
@@ -19859,45 +19845,59 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 27,
-          "nonApt": 39,
+          "apt": 31,
+          "nonApt": 43,
           "room": {
-            "studio": 19,
-            "two": 18,
-            "three": 27
+            "studio": 21,
+            "two": 21,
+            "three": 30
           },
           "price": {
-            "under3": 19,
-            "under6": 16,
+            "under3": 22,
+            "under6": 17,
             "over6": 4
           }
         },
         {
-          "apt": 27,
-          "nonApt": 26,
+          "apt": 32,
+          "nonApt": 33,
           "room": {
-            "studio": 12,
-            "two": 23,
-            "three": 18
+            "studio": 13,
+            "two": 30,
+            "three": 22
           },
           "price": {
-            "under3": 18,
-            "under6": 7,
+            "under3": 23,
+            "under6": 9,
             "over6": 1
           }
         },
         {
-          "apt": 15,
-          "nonApt": 44,
+          "apt": 23,
+          "nonApt": 75,
           "room": {
-            "studio": 23,
-            "two": 24,
-            "three": 12
+            "studio": 48,
+            "two": 32,
+            "three": 18
           },
           "price": {
-            "under3": 24,
-            "under6": 16,
+            "under3": 51,
+            "under6": 20,
             "over6": 4
+          }
+        },
+        {
+          "apt": 13,
+          "nonApt": 18,
+          "room": {
+            "studio": 10,
+            "two": 7,
+            "three": 14
+          },
+          "price": {
+            "under3": 10,
+            "under6": 7,
+            "over6": 1
           }
         }
       ]
@@ -20661,35 +20661,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 101,
-          "nonApt": 112,
+          "apt": 119,
+          "nonApt": 129,
           "room": {
-            "studio": 95,
-            "two": 40,
-            "three": 75
+            "studio": 108,
+            "two": 46,
+            "three": 91
           },
           "price": {
-            "under3": 25,
-            "under6": 45,
-            "over6": 42
+            "under3": 28,
+            "under6": 52,
+            "over6": 49
           }
         }
       ],
       "week": [
-        {
-          "apt": 88,
-          "nonApt": 31,
-          "room": {
-            "studio": 20,
-            "two": 19,
-            "three": 78
-          },
-          "price": {
-            "under3": 3,
-            "under6": 12,
-            "over6": 16
-          }
-        },
         {
           "apt": 76,
           "nonApt": 24,
@@ -20761,12 +20747,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 50,
+          "apt": 51,
           "nonApt": 38,
           "room": {
             "studio": 41,
             "two": 23,
-            "three": 22
+            "three": 23
           },
           "price": {
             "under3": 3,
@@ -20775,72 +20761,86 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 26,
-          "nonApt": 32,
+          "apt": 28,
+          "nonApt": 33,
           "room": {
-            "studio": 19,
+            "studio": 20,
             "two": 8,
-            "three": 30
+            "three": 32
           },
           "price": {
             "under3": 11,
-            "under6": 11,
+            "under6": 12,
             "over6": 10
           }
         },
         {
-          "apt": 14,
-          "nonApt": 24,
+          "apt": 19,
+          "nonApt": 26,
           "room": {
-            "studio": 15,
-            "two": 6,
-            "three": 17
+            "studio": 18,
+            "two": 7,
+            "three": 20
           },
           "price": {
             "under3": 4,
-            "under6": 8,
-            "over6": 12
+            "under6": 9,
+            "over6": 13
           }
         },
         {
-          "apt": 17,
-          "nonApt": 19,
+          "apt": 21,
+          "nonApt": 26,
           "room": {
-            "studio": 15,
-            "two": 10,
-            "three": 11
+            "studio": 19,
+            "two": 13,
+            "three": 15
+          },
+          "price": {
+            "under3": 7,
+            "under6": 11,
+            "over6": 8
+          }
+        },
+        {
+          "apt": 16,
+          "nonApt": 23,
+          "room": {
+            "studio": 17,
+            "two": 6,
+            "three": 16
           },
           "price": {
             "under3": 5,
             "under6": 9,
-            "over6": 5
+            "over6": 9
           }
         },
         {
-          "apt": 8,
-          "nonApt": 14,
+          "apt": 11,
+          "nonApt": 11,
           "room": {
             "studio": 12,
+            "two": 3,
+            "three": 6
+          },
+          "price": {
+            "under3": 3,
+            "under6": 5,
+            "over6": 3
+          }
+        },
+        {
+          "apt": 7,
+          "nonApt": 10,
+          "room": {
+            "studio": 7,
             "two": 3,
             "three": 7
           },
           "price": {
-            "under3": 4,
+            "under3": 2,
             "under6": 6,
-            "over6": 4
-          }
-        },
-        {
-          "apt": 6,
-          "nonApt": 6,
-          "room": {
-            "studio": 7,
-            "two": 1,
-            "three": 3
-          },
-          "price": {
-            "under3": 3,
-            "under6": 1,
             "over6": 2
           }
         }
@@ -21605,35 +21605,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 143,
-          "nonApt": 178,
+          "apt": 154,
+          "nonApt": 184,
           "room": {
-            "studio": 156,
-            "two": 55,
-            "three": 105
+            "studio": 159,
+            "two": 60,
+            "three": 113
           },
           "price": {
             "under3": 66,
-            "under6": 70,
-            "over6": 42
+            "under6": 73,
+            "over6": 45
           }
         }
       ],
       "week": [
-        {
-          "apt": 112,
-          "nonApt": 41,
-          "room": {
-            "studio": 34,
-            "two": 38,
-            "three": 78
-          },
-          "price": {
-            "under3": 10,
-            "under6": 17,
-            "over6": 14
-          }
-        },
         {
           "apt": 95,
           "nonApt": 45,
@@ -21733,12 +21719,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 25,
+          "apt": 26,
           "nonApt": 37,
           "room": {
             "studio": 26,
             "two": 14,
-            "three": 20
+            "three": 21
           },
           "price": {
             "under3": 11,
@@ -21747,43 +21733,57 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 30,
-          "nonApt": 29,
+          "apt": 35,
+          "nonApt": 32,
           "room": {
-            "studio": 22,
-            "two": 9,
-            "three": 26
+            "studio": 23,
+            "two": 11,
+            "three": 30
           },
           "price": {
             "under3": 11,
             "under6": 7,
-            "over6": 11
+            "over6": 14
           }
         },
         {
-          "apt": 13,
-          "nonApt": 54,
+          "apt": 21,
+          "nonApt": 59,
           "room": {
-            "studio": 54,
-            "two": 6,
-            "three": 7
+            "studio": 56,
+            "two": 13,
+            "three": 11
           },
           "price": {
             "under3": 20,
-            "under6": 30,
+            "under6": 33,
+            "over6": 6
+          }
+        },
+        {
+          "apt": 10,
+          "nonApt": 13,
+          "room": {
+            "studio": 10,
+            "two": 7,
+            "three": 5
+          },
+          "price": {
+            "under3": 5,
+            "under6": 4,
             "over6": 4
           }
         },
         {
           "apt": 8,
-          "nonApt": 10,
+          "nonApt": 18,
           "room": {
-            "studio": 8,
-            "two": 6,
-            "three": 3
+            "studio": 15,
+            "two": 4,
+            "three": 7
           },
           "price": {
-            "under3": 3,
+            "under3": 11,
             "under6": 4,
             "over6": 3
           }
@@ -22549,35 +22549,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 266,
-          "nonApt": 329,
+          "apt": 297,
+          "nonApt": 358,
           "room": {
-            "studio": 191,
-            "two": 159,
-            "three": 232
+            "studio": 206,
+            "two": 169,
+            "three": 265
           },
           "price": {
-            "under3": 118,
-            "under6": 143,
-            "over6": 68
+            "under3": 122,
+            "under6": 158,
+            "over6": 78
           }
         }
       ],
       "week": [
-        {
-          "apt": 123,
-          "nonApt": 64,
-          "room": {
-            "studio": 35,
-            "two": 53,
-            "three": 97
-          },
-          "price": {
-            "under3": 18,
-            "under6": 31,
-            "over6": 15
-          }
-        },
         {
           "apt": 154,
           "nonApt": 82,
@@ -22663,73 +22649,87 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 71,
-          "nonApt": 78,
+          "apt": 74,
+          "nonApt": 79,
           "room": {
             "studio": 44,
             "two": 48,
-            "three": 55
+            "three": 59
           },
           "price": {
             "under3": 30,
             "under6": 35,
-            "over6": 13
+            "over6": 14
           }
         },
         {
-          "apt": 55,
-          "nonApt": 114,
+          "apt": 60,
+          "nonApt": 118,
           "room": {
-            "studio": 75,
-            "two": 36,
-            "three": 54
+            "studio": 78,
+            "two": 39,
+            "three": 57
           },
           "price": {
             "under3": 50,
-            "under6": 46,
+            "under6": 50,
             "over6": 18
           }
         },
         {
-          "apt": 59,
-          "nonApt": 60,
+          "apt": 73,
+          "nonApt": 67,
           "room": {
-            "studio": 24,
-            "two": 34,
-            "three": 56
-          },
-          "price": {
-            "under3": 15,
-            "under6": 25,
-            "over6": 20
-          }
-        },
-        {
-          "apt": 28,
-          "nonApt": 34,
-          "room": {
-            "studio": 21,
-            "two": 16,
-            "three": 25
+            "studio": 29,
+            "two": 35,
+            "three": 71
           },
           "price": {
             "under3": 16,
-            "under6": 15,
-            "over6": 3
+            "under6": 29,
+            "over6": 22
           }
         },
         {
-          "apt": 10,
-          "nonApt": 53,
+          "apt": 38,
+          "nonApt": 54,
           "room": {
-            "studio": 38,
-            "two": 9,
-            "three": 14
+            "studio": 29,
+            "two": 23,
+            "three": 38
           },
           "price": {
-            "under3": 13,
-            "under6": 35,
-            "over6": 5
+            "under3": 20,
+            "under6": 22,
+            "over6": 12
+          }
+        },
+        {
+          "apt": 16,
+          "nonApt": 67,
+          "room": {
+            "studio": 44,
+            "two": 17,
+            "three": 20
+          },
+          "price": {
+            "under3": 18,
+            "under6": 41,
+            "over6": 8
+          }
+        },
+        {
+          "apt": 7,
+          "nonApt": 44,
+          "room": {
+            "studio": 31,
+            "two": 9,
+            "three": 11
+          },
+          "price": {
+            "under3": 10,
+            "under6": 30,
+            "over6": 4
           }
         }
       ]
@@ -23493,35 +23493,21 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 198,
-          "nonApt": 126,
+          "apt": 244,
+          "nonApt": 160,
           "room": {
-            "studio": 82,
-            "two": 118,
-            "three": 121
+            "studio": 95,
+            "two": 146,
+            "three": 157
           },
           "price": {
-            "under3": 48,
-            "under6": 68,
-            "over6": 10
+            "under3": 57,
+            "under6": 89,
+            "over6": 14
           }
         }
       ],
       "week": [
-        {
-          "apt": 115,
-          "nonApt": 49,
-          "room": {
-            "studio": 37,
-            "two": 44,
-            "three": 81
-          },
-          "price": {
-            "under3": 20,
-            "under6": 22,
-            "over6": 7
-          }
-        },
         {
           "apt": 80,
           "nonApt": 66,
@@ -23593,12 +23579,12 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 74,
+          "apt": 79,
           "nonApt": 36,
           "room": {
             "studio": 19,
-            "two": 43,
-            "three": 46
+            "two": 44,
+            "three": 50
           },
           "price": {
             "under3": 12,
@@ -23607,73 +23593,87 @@ window.__DASHBOARD_DATA__ = {
           }
         },
         {
-          "apt": 65,
-          "nonApt": 42,
+          "apt": 71,
+          "nonApt": 46,
           "room": {
-            "studio": 26,
-            "two": 37,
-            "three": 44
+            "studio": 28,
+            "two": 40,
+            "three": 48
           },
           "price": {
-            "under3": 14,
-            "under6": 26,
+            "under3": 15,
+            "under6": 28,
+            "over6": 3
+          }
+        },
+        {
+          "apt": 48,
+          "nonApt": 36,
+          "room": {
+            "studio": 19,
+            "two": 34,
+            "three": 29
+          },
+          "price": {
+            "under3": 15,
+            "under6": 16,
+            "over6": 5
+          }
+        },
+        {
+          "apt": 40,
+          "nonApt": 32,
+          "room": {
+            "studio": 19,
+            "two": 26,
+            "three": 26
+          },
+          "price": {
+            "under3": 11,
+            "under6": 19,
             "over6": 2
           }
         },
         {
-          "apt": 42,
-          "nonApt": 26,
+          "apt": 31,
+          "nonApt": 24,
           "room": {
-            "studio": 17,
-            "two": 25,
-            "three": 25
+            "studio": 16,
+            "two": 15,
+            "three": 23
           },
           "price": {
             "under3": 12,
-            "under6": 10,
-            "over6": 4
-          }
-        },
-        {
-          "apt": 20,
-          "nonApt": 21,
-          "room": {
-            "studio": 15,
-            "two": 15,
-            "three": 10
-          },
-          "price": {
-            "under3": 8,
-            "under6": 12,
+            "under6": 11,
             "over6": 1
           }
         },
         {
-          "apt": 19,
-          "nonApt": 14,
+          "apt": 22,
+          "nonApt": 16,
           "room": {
-            "studio": 10,
-            "two": 10,
-            "three": 13
-          },
-          "price": {
-            "under3": 9,
-            "under6": 5,
-            "over6": 0
-          }
-        },
-        {
-          "apt": 12,
-          "nonApt": 10,
-          "room": {
-            "studio": 9,
-            "two": 8,
-            "three": 5
+            "studio": 11,
+            "two": 11,
+            "three": 15
           },
           "price": {
             "under3": 6,
-            "under6": 4,
-            "over6": 0
+            "under6": 9,
+            "over6": 1
+          }
+        },
+        {
+          "apt": 9,
+          "nonApt": 4,
+          "room": {
+            "studio": 2,
+            "two": 4,
+            "three": 7
+          },
+          "price": {
+            "under3": 1,
+            "under6": 1,
+            "over6": 2
           }
         }
       ]
