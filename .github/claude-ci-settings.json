@@ -47,6 +47,7 @@
       "Bash(tr:*)",
       "Bash(node --check:*)",
       "Bash(node dashboard/ingest.mjs --selftest)",
+      "Bash(node dashboard/ingest-rebuild.mjs --selftest)",
       "Bash(npm ci)",
       "Bash(npm run verify)",
       "Bash(sh -n:*)",
@@ -71,6 +72,7 @@
       "Bash(sh dashboard/scripts/run-ingest.sh:*)",
       "Bash(dashboard/scripts/run-ingest.sh:*)",
       "Bash(node dashboard/ingest.mjs)",
+      "Bash(node dashboard/ingest-rebuild.mjs)",
       "Bash(rm:*)",
       "Bash(rmdir:*)"
     ]

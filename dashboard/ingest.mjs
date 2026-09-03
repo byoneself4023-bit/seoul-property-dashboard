@@ -10,12 +10,34 @@
  *   RTMS_SERVICE_KEY  공공데이터포털 API 인증키 (URL-encoded 없는 원문)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync } from 'node:fs';
+import * as rebuildApi from './ingest-rebuild.mjs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 이 파일이 `node ingest.mjs` 로 직접 실행됐는가.
+ *
+ * 2026-08-12 에 사고가 있었다 — 다른 스크립트가 집계 함수를 쓰려고 이 모듈을
+ * import 했는데, 진입점 가드가 "--selftest 가 없으면 main()" 이라 **전량 수집이
+ * 돌아 data.js 가 덮어써졌다.** import 는 수집을 실행시키면 안 된다.
+ *
+ * `import.meta.main` 은 Node 24+ 에서만 있다. 러너는 Node 22 라 그걸 쓰면
+ * CI 에서 항상 false 가 되어 이번엔 반대로 수집이 영영 안 돈다. 그래서
+ * argv[1] 과 이 모듈의 URL 을 직접 비교한다(심볼릭 링크는 realpath 로 푼다).
+ */
+const isDirectRun = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+})();
 
 // ════════════════════════════════════════════════
 //  .env 자동 로드 (의존성 없음)
@@ -590,6 +612,418 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
 }
 
 // ════════════════════════════════════════════════
+//  시장 리포트 집계 — 블록 ①②③④
+// ════════════════════════════════════════════════
+//
+// 화면이 그릴 결과만 미리 계산해 data.js 에 싣는다. 개별 거래 45만 건을 data.js 에
+// 넣으면 66MB 가 되므로 원본은 캐시에만 둔다. 이 구간은 aggregateItems /
+// buildNormalized 를 건드리지 않는다 — 기존 거래량 집계가 달라지면 안 되기 때문이다.
+//
+// ── 축이 둘이다 ──
+//   기준선(baseline) : REPORT_BASELINE_FROM 이후 전체 누적. 신고가·신저가 판정용 이력
+//   대상(target)     : 직전 수집 대비 새로 들어온 거래 = "최근 신고분". 화면에 나오는 행
+// 국토부 API 는 신고일을 주지 않는다. 직전 캐시와 대조해 새로 들어온 것이 곧 신고분이다.
+
+/**
+ * 기준선 시작일. START_YM(수집 시작월)과 **의도적으로 분리**했다.
+ * 예전에 START_YM 을 기준선으로 재사용하는 바람에 화면 각주에 "2022년 이후"가 찍히고
+ * 실제 의도(2024-01)와 어긋났다. 상수를 나눠야 그 사고가 다시 안 난다.
+ */
+const REPORT_BASELINE_FROM = '20240101';
+
+/**
+ * 1985-04-11 이전 준공 아파트는 전용면적에 복도·계단·엘리베이터 등 공용면적이 포함된
+ * 상태로 신고된다. 같은 84㎡라도 실제 전용은 더 좁아 이후 준공 단지와 같은 평형으로
+ * 비교하면 안 된다. 데이터에 준공 "월"이 없어 연 단위로 자르므로 1985년 4~12월
+ * 준공분도 함께 빠지지만 감수한다.
+ */
+const REPORT_MIN_BUILD_YEAR = 1986;
+
+/** 각 목록에 표시할 줄 수 */
+const REPORT_TOP_N = 10;
+
+/** ② 거래 1위에서 층위별로 표시할 줄 수. 3단 × 5행이면 화면이 차고 순위 흐름이 보인다 */
+const REPORT_RANK_N = 5;
+
+/** 1평 = 3.3058㎡ */
+const PYEONG_M2 = 3.3058;
+
+const DISTRICT_BY_CODE = new Map(DISTRICTS.map(d => [d.code, d.name]));
+
+// ── 신고분(델타) ────────────────────────────────
+// fetchCombo 가 캐시를 덮어쓰기 **전에** 옛 내용과 대조해 여기에 채운다.
+// 같은 (단지·계약일·금액·면적·층) 조합이 실제로 여러 건 있을 수 있어 개수까지 센다.
+const reportDelta = new Map();
+
+function deltaKey(district, propType, it) {
+  return [
+    district, propType, it.name ?? '', it.umdNm ?? '', it.jibun ?? '',
+    it.year, it.month, it.day, it.amount, it.area, it.floor,
+  ].join('|');
+}
+
+/** 새로 들어온 거래를 기록한다. old 가 없으면(첫 수집) 아무것도 기록하지 않는다. */
+export function recordDelta(lawdCd, propType, oldItems, newItems) {
+  if (!Array.isArray(oldItems)) return;
+  const district = DISTRICT_BY_CODE.get(lawdCd) ?? lawdCd;
+  const seen = new Map();
+  for (const it of oldItems) {
+    const k = deltaKey(district, propType, it);
+    seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
+  for (const it of newItems) {
+    const k = deltaKey(district, propType, it);
+    const left = seen.get(k) ?? 0;
+    if (left > 0) seen.set(k, left - 1);
+    else reportDelta.set(k, (reportDelta.get(k) ?? 0) + 1);
+  }
+}
+
+// ── 공통 필터 ───────────────────────────────────
+// 제외는 셋뿐이다. 등기(rgstDate)는 **기준선에도 걸지 않는다** — 과거의 더 비싼
+// 미등기 거래가 기준선에서 빠지면 현재 거래가 거짓 신고가로 뜬다.
+const REPORT_EXCLUDES = ['취소 신고 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이전 준공 제외`];
+
+function itemYmd(it) {
+  return `${it.year}${String(it.month).padStart(2, '0')}${String(it.day).padStart(2, '0')}`;
+}
+
+/**
+ * 평형 그룹 키 — 전용면적의 **정수부**.
+ * 반올림하면 국평 84.0~84.99 가 84.5 에서 갈려 84.9㎡ 4만 건을 포함한 6만 건 이상이
+ * "85㎡" 로 떨어져 나간다. 실측으로 확인했다. 정수부는 "전용 59/84/114" 표기와도 맞는다.
+ */
+function sizeKey(area) {
+  return Math.floor(area);
+}
+
+/**
+ * 리포트 대상 거래를 평평한 배열로 만든다.
+ * @param {Object} rawByDistrict
+ * @param {string[]} propTypes  읽을 유형. ③ 은 rh·offi 만 넘긴다(sh 는 건물명·면적이 전부 null)
+ */
+function reportRows(rawByDistrict, propTypes) {
+  const rows = [];
+  for (const [district, raw] of Object.entries(rawByDistrict)) {
+    for (const propType of propTypes) {
+      for (const it of (raw[propType] ?? [])) {
+        const area = Number(it.area);
+        const amount = Number(it.amount);
+        if (!Number.isFinite(area) || area <= 0 || !Number.isFinite(amount)) continue;
+        if (it.cdealType === 'O') continue;
+        if (String(it.dealingGbn ?? '').includes('직거래')) continue;
+        if (!(Number(it.buildYear) >= REPORT_MIN_BUILD_YEAR)) continue;
+        const ymd = itemYmd(it);
+        if (ymd < REPORT_BASELINE_FROM) continue;
+        rows.push({
+          district, propType,
+          name: it.name, umd: it.umdNm, jibun: it.jibun,
+          area, amount, floor: it.floor, buildYear: it.buildYear,
+          size: sizeKey(area), ymd,
+          // 단지 식별 — aptSeq 는 apt 에만 있다. 없으면 이름+법정동으로 묶는다.
+          seq: it.aptSeq ?? `${district}|${it.umdNm}|${it.name}`,
+          // 법정동 식별 — 동 이름만 쓰면 다른 구의 같은 동이 합쳐진다.
+          umdKey: `${district}|${it.umdNm}`,
+          isNew: reportDelta.has(deltaKey(district, propType, it)),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+/** 표시용 행 — data.js 에 싣는 최소 필드 */
+function outRow(r, prev, gap) {
+  return {
+    name: r.name, umd: r.umd, district: r.district, size: r.size,
+    area: r.area, floor: r.floor, amount: r.amount, date: r.ymd,
+    prev, gap,
+    // 상승률도 **화면에 찍는 두 금액**으로 계산한다. 원값으로 계산하면
+    // 화면의 "11.1 → 13.8" 과 "+24.3%" 가 나눗셈으로 맞지 않는다(변동폭과 같은 이유).
+    pct: Number(((eok1(r.amount) - eok1(prev)) / eok1(prev) * 100).toFixed(1)),
+  };
+}
+
+/**
+ * 화면에 찍히는 억 단위 값(소수 첫째 자리). 화면의 rptEok 와 같은 반올림이다.
+ */
+function eok1(manwon) {
+  return Number((manwon / 10000).toFixed(1));
+}
+
+/**
+ * 변동폭은 **원값의 차이가 아니라 화면에 찍는 두 값의 차이**다.
+ * 원값끼리 빼고 반올림하면 "직전 11.1 → 이번 13.8, +2.8억" 처럼 화면 안에서
+ * 산수가 맞지 않는 행이 나온다(11.05→11.1, 13.84→13.8 처럼 양끝이 각각 반올림되기 때문).
+ * 읽는 사람은 원값을 볼 수 없으므로 화면 안에서 맞아야 한다.
+ * 반환은 만원 단위 — 표시 코드가 그대로 억으로 환산한다.
+ */
+function shownGap(lo, hi) {
+  return Math.round((eok1(hi) - eok1(lo)) * 10) * 1000;
+}
+
+/**
+ * 신고가·신저가 — 대상(신고분)을 기준선(누적 이력)에 대본다.
+ * 판정 단위는 같은 단지 + 같은 평형 그룹. 한 단지가 평형을 바꿔가며 목록을 채우지
+ * 않도록 단지당 1건(변동폭 최대)만 남긴다.
+ *
+ * 기록을 갱신했더라도 **화면 표시상 변동폭이 0.0억이 되는 건은 목록에서 뺀다.**
+ * "1.7 → 1.7, +0.0억" 은 읽는 사람에게 아무 정보가 아니고 오히려 오류로 읽힌다.
+ */
+function findRecords(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.seq}|${r.size}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+
+  const highs = [], lows = [];
+  for (const g of groups.values()) {
+    const targets = g.filter(r => r.isNew);
+    if (!targets.length) continue;
+    const history = g.filter(r => !r.isNew);
+    if (!history.length) continue;              // 비교할 이력이 없으면 판정 불가
+    const prevMax = Math.max(...history.map(r => r.amount));
+    const prevMin = Math.min(...history.map(r => r.amount));
+    const top = targets.reduce((m, r) => (r.amount > m.amount ? r : m));
+    const bot = targets.reduce((m, r) => (r.amount < m.amount ? r : m));
+    if (top.amount > prevMax) {
+      const gap = shownGap(prevMax, top.amount);
+      if (gap > 0) highs.push(outRow(top, prevMax, gap));
+    }
+    if (bot.amount < prevMin) {
+      const gap = shownGap(bot.amount, prevMin);
+      if (gap > 0) lows.push(outRow(bot, prevMin, gap));
+    }
+  }
+
+  const pick = (list) => {
+    const best = new Map();
+    for (const x of list) {
+      const k = `${x.district}|${x.umd}|${x.name}`;
+      const cur = best.get(k);
+      if (!cur || x.gap > cur.gap) best.set(k, x);
+    }
+    return [...best.values()].sort((a, b) => b.gap - a.gap);
+  };
+  return { highs: pick(highs), lows: pick(lows) };
+}
+
+/** ② 거래 1위 — 세기만 한다. 기준선 구간 전체가 대상이라 델타가 필요 없다. */
+function rankCounts(rows) {
+  const bump = (m, k, label) => {
+    if (!m.has(k)) m.set(k, { label, n: 0 });
+    m.get(k).n++;
+  };
+  const byGu = new Map(), byUmd = new Map(), bySeq = new Map();
+  for (const r of rows) {
+    bump(byGu,  r.district, r.district);
+    bump(byUmd, r.umdKey,   `${r.umd}`);
+    bump(bySeq, r.seq,      r.name);
+  }
+  const top = (m, extra) => [...m.entries()]
+    .sort((a, b) => b[1].n - a[1].n)
+    .slice(0, REPORT_RANK_N)
+    .map(([k, v]) => ({ label: v.label, count: v.n, ...(extra ? extra(k, v) : {}) }));
+
+  const guOf = k => k.split('|')[0];
+  return {
+    district: top(byGu),
+    umd:      top(byUmd, k => ({ sub: guOf(k) })),
+    complex:  top(bySeq, (k, v) => {
+      const r = rows.find(x => x.seq === k);
+      return { sub: r ? `${r.district} ${r.umd}` : '' };
+    }),
+  };
+}
+
+/**
+ * ⑤ 월별 거래량 추이 — 계약월별 건수를 유형 세 갈래로 센다.
+ * 모집단은 ② 와 같은 기준선 구간이라 유형별 합계가 ③ 의 거래량과 정확히 맞는다.
+ *
+ * **마지막 달은 버린다.** 수집은 항상 진행 중인 당월을 포함하므로 마지막 버킷은
+ * 언제나 부분값이다(실측: 2026-08 이 364건 — 다른 달의 8%). 그대로 그리면 폭락으로 읽힌다.
+ *
+ * **남은 마지막 두 달은 잠정으로 표시한다.** 재수집 범위가 최근 2개월이라 그 구간은
+ * 아직 신고분이 차오르는 중이다. 표시가 없으면 미신고분이 거래 감소로 보인다.
+ */
+const REPORT_TREND_PROVISIONAL = 2;
+
+function buildTrend(series) {
+  const counts = {};
+  const all = new Set();
+  for (const [key, rows] of Object.entries(series)) {
+    counts[key] = {};
+    for (const r of rows) {
+      const ym = `${r.ymd.slice(0, 4)}-${r.ymd.slice(4, 6)}`;
+      counts[key][ym] = (counts[key][ym] ?? 0) + 1;
+      all.add(ym);
+    }
+  }
+  const months = [...all].sort();
+  const dropped = months.pop() ?? null;   // 진행 중인 당월
+  const out = { months, dropped, provisional: Math.min(REPORT_TREND_PROVISIONAL, months.length) };
+  for (const key of Object.keys(series)) out[key] = months.map(m => counts[key][m] ?? 0);
+  return out;
+}
+
+/** ④ 정비사업 — 캐시가 없으면 null. 없다고 실패시키지 않는다(월 1회 수동 수집). */
+function buildRebuildBlock(rebuild) {
+  if (!rebuild) return null;
+  const { buildProjects, extractNewDesignations, extractCancellations } = rebuild.api;
+  const projects = buildProjects(rebuild.rebuildRows, rebuild.announcementRows);
+  const from = `${REPORT_BASELINE_FROM.slice(0, 4)}-${REPORT_BASELINE_FROM.slice(4, 6)}-${REPORT_BASELINE_FROM.slice(6)}`;
+  // 구역명(rgnNm)만으로는 구분이 안 되는 경우가 있다 — 성수전략정비구역 1~4지구는
+  // 이름이 같고 PRJC_CD·지번만 다르다. 소재지를 함께 실어야 읽는 사람이 구별한다.
+  /**
+   * 화면에 찍는 소재지 한 줄.
+   * 자치구는 대개 지번(PSTN_NM) 앞에 이미 들어 있어("강북구 미아동 130번지 일대")
+   * 따로 붙이면 "강북구 · 강북구 미아동 …" 으로 두 번 나온다. 들어 있지 않은 경우
+   * ("봉래동1가 58-4번지 일원")에만 앞에 세운다.
+   * 원본에 자치구가 없는 건(중화6구역 — PSTN_NM 에 구가 없고 LOGVM 이 "서울특별시")은
+   * **지번만 그대로 둔다.** 동 이름으로 구를 유추하면 원본에 없는 값을 만드는 것이다.
+   */
+  const place = (district, addr) => {
+    if (!addr) return district ?? null;
+    return district && !addr.includes(district) ? `${district} ${addr}` : addr;
+  };
+  const shape = x => {
+    const addr = x.rgnNm ? (x.pstnNm ?? null) : null;
+    return {
+      name: x.rgnNm || x.pstnNm || x.prjcCd,
+      addr,
+      district: x.district ?? null,
+      place: place(x.district ?? null, addr),
+      date: x.ancmntYmd,
+    };
+  };
+  const inSpan = a => a.filter(x => x.ancmntYmd && x.ancmntYmd >= from);
+  const news = inSpan(extractNewDesignations(projects));
+  const cancels = inSpan(extractCancellations(projects));
+
+  // 표시 행이 같은 값으로 겹치는 경우가 있다 — 성수전략정비구역 1~4지구는 PRJC_CD 만
+  // 다르고 구역명·소재지·고시일이 모두 같아, 그대로 늘어놓으면 읽는 사람이 구별하지
+  // 못한 채 목록 슬롯만 먹는다. 같은 값이면 묶고 몇 개 구역인지 적는다.
+  const group = (list) => {
+    const m = new Map();
+    for (const x of list.map(shape)) {
+      const k = [x.name, x.addr ?? '', x.district ?? '', x.date ?? ''].join('|');
+      if (m.has(k)) m.get(k).zones++;
+      else m.set(k, { ...x, zones: 1 });
+    }
+    return [...m.values()].slice(0, REPORT_TOP_N);
+  };
+
+  return {
+    projects: projects.size,
+    counts: { news: news.length, cancels: cancels.length },
+    news:    group(news),
+    cancels: group(cancels),
+  };
+}
+
+/**
+ * 각주는 손으로 쓰지 않는다. 집계에 실제로 쓴 상수에서 만든다.
+ * 상수를 바꾸면 각주가 따라 바뀌므로 코드와 문구가 어긋날 수 없다.
+ */
+export function buildReportMeta(deltaCount) {
+  const f = REPORT_BASELINE_FROM;
+  return {
+    baselineFrom: f,
+    baselineLabel: `${f.slice(0, 4)}년 ${Number(f.slice(4, 6))}월 이후 누적`,
+    target: '최근 신고분',
+    targetNote: '직전 수집 대비 새로 들어온 거래. 국토부는 신고일을 제공하지 않아 캐시 대조로 구한다',
+    targetCount: deltaCount,
+    excludes: REPORT_EXCLUDES,
+    compareUnit: '같은 단지 · 같은 평형(전용면적 정수부)',
+    sortBy: '변동폭 큰 순',
+    topN: REPORT_TOP_N,
+    rankN: REPORT_RANK_N,
+    provisional: true,
+    gapZero: '표시상 변동폭이 0.0억인 건 제외',
+    pctNote: '상승률은 표시된 두 금액으로 계산',
+    trendNote: '계약월 기준 · 진행 중인 당월 제외 · 최근 2개월은 신고 지연으로 아직 차오르는 중(잠정)',
+    // 출처는 블록마다 다르다. ①②③ 은 실거래, ④ 는 정비사업 고시다.
+    // 둘을 한 문자열로 묶으면 네 장 모두에 해당 없는 출처가 하나씩 붙는다.
+    sourceTrade: '국토교통부 RTMS 실거래가',
+    sourceZone: '서울 열린데이터광장 정비사업 현황',
+    lagNote: '신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다',
+    deltaLimit: '재수집 범위가 최근 2개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다',
+  };
+}
+
+/**
+ * 정비사업 캐시를 읽는다. 없으면 null — ④ 블록만 비고 나머지는 정상 동작한다.
+ * 이 캐시는 gitignored 이고 수집 워크플로가 아직 없다(월 1회 수동 실행).
+ */
+export function loadRebuildCache() {
+  const dir = join(__dirname, '.cache', 'rebuild');
+  if (!existsSync(dir)) return null;
+  try {
+    const rebuildRows = [], announcementRows = [];
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      const rows = JSON.parse(readFileSync(join(dir, f), 'utf8')).rows ?? [];
+      (f.startsWith('upisAnnouncement') ? announcementRows : rebuildRows).push(...rows);
+    }
+    if (!rebuildRows.length) return null;
+    return { api: rebuildApi, rebuildRows, announcementRows };
+  } catch (err) {
+    console.warn(`  [경고] 정비사업 캐시를 읽지 못했다 — ④ 건너뜀: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * @param {Object} rawByDistrict
+ * @param {Object|null} rebuild  { api, rebuildRows, announcementRows } 또는 null
+ */
+export function buildReport(rawByDistrict, rebuild) {
+  const aptRows = reportRows(rawByDistrict, ['apt']);
+  const rhRows  = reportRows(rawByDistrict, ['rh']);
+  const offiRows = reportRows(rawByDistrict, ['offi']);
+
+  const apt = findRecords(aptRows);
+  const rh  = findRecords(rhRows);
+  const offi = findRecords(offiRows);
+
+  const newCount = a => a.filter(r => r.isNew).length;
+  const meta = buildReportMeta(newCount(aptRows) + newCount(rhRows) + newCount(offiRows));
+
+  return {
+    meta,
+    // ① 아파트 신고가·신저가
+    apt: {
+      target: newCount(aptRows),
+      baseline: aptRows.length,
+      counts: { high: apt.highs.length, low: apt.lows.length },
+      highs: apt.highs.slice(0, REPORT_TOP_N),
+      lows:  apt.lows.slice(0, REPORT_TOP_N),
+    },
+    // ② 거래 1위 — 기준선 구간 누적 건수
+    rank: { baseline: aptRows.length, ...rankCounts(aptRows) },
+    // ③ 비아파트 — 연립다세대 + 오피스텔. 단독·다가구(sh)는 건물명·면적이 없어 제외
+    nonApt: {
+      rh: {
+        label: '연립·다세대', volume: rhRows.length, target: newCount(rhRows),
+        counts: { high: rh.highs.length, low: rh.lows.length },
+        highs: rh.highs.slice(0, 5), lows: rh.lows.slice(0, 5),
+      },
+      offi: {
+        label: '오피스텔', volume: offiRows.length, target: newCount(offiRows),
+        counts: { high: offi.highs.length, low: offi.lows.length },
+        highs: offi.highs.slice(0, 5), lows: offi.lows.slice(0, 5),
+      },
+    },
+    // ④ 정비사업
+    rebuild: buildRebuildBlock(rebuild),
+    // ⑤ 월별 거래량 추이 — ② 와 같은 모집단
+    trend: buildTrend({ apt: aptRows, rh: rhRows, offi: offiRows }),
+  };
+}
+
+// ════════════════════════════════════════════════
 //  dashboard.html 주입
 // ════════════════════════════════════════════════
 
@@ -809,6 +1243,13 @@ async function fetchCombo(serviceKey, endpoint, lawdCd, dealYmd, propType, useCa
           reason: `totalCount 불일치 (${totalCount} vs ${allItems.length})`
         });
         // 불일치라도 수집된 건 캐시에 저장 (부분 데이터 활용)
+      }
+
+      // 캐시를 덮어쓰기 **전에** 옛 내용과 대조해 신규 유입(=신고분)을 기록한다.
+      // 덮어쓴 뒤에는 무엇이 새로 들어왔는지 알 방법이 없다.
+      const prev = cacheLoad(lawdCd, dealYmd, propType);
+      if (prev && prev.schemaVersion === CACHE_SCHEMA_VERSION) {
+        recordDelta(lawdCd, propType, prev.items, allItems);
       }
 
       const result = { items: allItems, totalCount };
@@ -1718,6 +2159,17 @@ async function main() {
   console.log('\n[ingest] 집계 중...');
   const normalized = buildNormalized(rawByDistrict, monthPeriods, weekPeriods, generatedAt);
 
+  // 리포트는 기존 집계와 분리해서 붙인다 — buildNormalized 의 반환값을
+  // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
+  normalized.report = buildReport(rawByDistrict, loadRebuildCache());
+  const rep = normalized.report;
+  console.log(
+    `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
+    `           ① 아파트 신고가 ${rep.apt.counts.high} / 신저가 ${rep.apt.counts.low}\n` +
+    `           ③ 연립다세대 신고가 ${rep.nonApt.rh.counts.high} / 오피스텔 ${rep.nonApt.offi.counts.high}\n` +
+    `           ④ 정비사업 ${rep.rebuild ? `신규 ${rep.rebuild.counts.news} / 해제 ${rep.rebuild.counts.cancels}` : '캐시 없음 — 건너뜀'}`
+  );
+
   console.log('[ingest] data.js 및 data.json 저장 중...');
   inject(normalized);
 
@@ -1732,11 +2184,14 @@ async function main() {
 // ════════════════════════════════════════════════
 //  진입점
 // ════════════════════════════════════════════════
-if (process.argv.includes('--selftest')) {
-  runSelfTest();
-} else {
-  main().catch(err => {
-    console.error('[ingest] 오류:', err.message);
-    process.exit(1);
-  });
+// import 로 들어온 경우에는 아무것도 실행하지 않는다. 위 isDirectRun 주석 참조.
+if (isDirectRun) {
+  if (process.argv.includes('--selftest')) {
+    runSelfTest();
+  } else {
+    main().catch(err => {
+      console.error('[ingest] 오류:', err.message);
+      process.exit(1);
+    });
+  }
 }
