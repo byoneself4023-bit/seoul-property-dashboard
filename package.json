@@ -3,7 +3,8 @@
   "private": true,
   "description": "서울 25개구 부동산 거래량 대시보드 (단일 HTML). puppeteer는 UI 품질 자동 판정(verify-quality.mjs) 전용 개발 도구.",
   "scripts": {
-    "verify": "node dashboard/verify-quality.mjs"
+    "verify": "node dashboard/verify-quality.mjs",
+    "report": "node dashboard/render-report.mjs"
   },
   "devDependencies": {
     "puppeteer": "^25.3.0"

@@ -209,6 +209,10 @@ data.json
 !dashboard/.cache/
 !dashboard/.cache/ingest/
 !dashboard/.cache/ingest/**
+# 정비사업 캐시(~15MB, 51파일)는 추적하지 않는다. 서울 열린데이터광장은 호출 횟수
+# 제한이 없고 51회면 끝나므로 필요할 때 다시 받으면 된다. 매달 쌓을 이유가 없다.
+# 위 !dashboard/.cache/ 재포함 때문에 명시하지 않으면 추적 대상이 된다.
+dashboard/.cache/rebuild/
 
 # 훅 상태 파일 (검증 재시도 카운터·로그)
 .claude/.state/
@@ -220,3 +224,8 @@ drive-docs/
 # 본문은 없지만 인용만으로도 사업 정보가 공개된다. 2026-08-13 이력에서 제거했다.
 # 파일은 로컬에 남겨 두고 추적만 하지 않는다.
 docs/저장소-현황-조사.md
+
+# 리포트 화면 캡처 — 확인용 산출물. 저장소에 넣지 않는다
+/report.png
+# render-report.mjs 가 내는 PNG. 위 out/ 규칙에도 걸리지만 의도를 남긴다
+dashboard/out/
