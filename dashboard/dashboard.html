@@ -109,7 +109,10 @@ input[type=range]{background:transparent}
   /* ⑤ 추이의 세 번째 계열. 색맹 분리도 검증을 통과한 조합이 이 셋이다
      (흰색은 채도 하한 탈락, 보라는 --fall 과 적록에서 붙는다). */
   --series3:#F0C05A; --bar:#3E4756;
-  --num:'RptMono',ui-monospace,SFMono-Regular,Menlo,Monaco,monospace;
+  /* RptKR 을 모노 뒤에 둔다 — 폴백은 글리프 단위라 숫자·라틴은 RptMono 가,
+     "년·월·건" 같은 한글만 RptKR 이 맡는다. 러너 실측에서 --num 요소의 한글이
+     □ 로 남던 마지막 구멍(2026-09-04). */
+  --num:'RptMono',ui-monospace,SFMono-Regular,Menlo,Monaco,'RptKR',monospace;
   --kr:'RptKR','Apple SD Gothic Neo',Pretendard,'Malgun Gothic','맑은 고딕',sans-serif;
   display:flex; justify-content:center; padding:8px 0 32px;
 }
