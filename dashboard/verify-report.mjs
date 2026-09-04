@@ -41,6 +41,34 @@ export function loadData(jsPath = join(__dirname, 'data.js')) {
   return JSON.parse(m[1]);
 }
 
+/**
+ * 해제 짝 제거 — ingest 의 removeCancelledPairs 와 같은 규칙을 **일부러 다시 구현한다**
+ * (함수를 공유하면 같은 버그를 두 번 실행할 뿐이다 — baselineRows 주석 참조).
+ * 같은 (구·단지·법정동·지번·계약일·금액·면적·층) 키에서 해제 행(cdealType='O') 전부와
+ * 정상 행을 해제 수만큼 걷어낸다. 취소된 계약은 0건이어야 한다.
+ * data.js 의 meta.cancelPairsRemoved 가 참일 때만 적용한다 — 구 규칙으로 만든
+ * data.js(해제 행만 제외)도 이 스크립트로 검증할 수 있게 하는 스위치다.
+ */
+function dropCancelledPairs(items) {
+  const key = it => [it._lawd, it.name ?? '', it.umdNm ?? '', it.jibun ?? '',
+    it.year, it.month, it.day, it.amount, it.area, it.floor].join('|');
+  const cancels = new Map();
+  for (const it of items) {
+    if (it.cdealType !== 'O') continue;
+    const k = key(it);
+    cancels.set(k, (cancels.get(k) ?? 0) + 1);
+  }
+  if (cancels.size === 0) return items;
+  const out = [];
+  for (const it of items) {
+    if (it.cdealType === 'O') continue;
+    const k = key(it), left = cancels.get(k) ?? 0;
+    if (left > 0) { cancels.set(k, left - 1); continue; }
+    out.push(it);
+  }
+  return out;
+}
+
 /** 캐시 원본을 유형별로 읽는다. 리포트가 표시한 행을 되짚기 위한 것이다. */
 function loadCache() {
   const byType = { apt: [], rh: [], sh: [], offi: [] };
@@ -388,6 +416,12 @@ export function verifyReport() {
   if (!rep) { console.error('data.js 에 report 가 없다. 수집을 먼저 실행하라.'); return false; }
 
   const cache = loadCache();
+  // 새 규칙 data.js(해제 짝 제거)면 검증 모집단에도 같은 짝 제거를 건다.
+  // 표시된 행은 살아남은 행 중에만 있어야 하므로, 캐시 전체를 여기서 한 번 거른다 —
+  // [오염]·[값]·[선별]·[추이] 전부가 같은 모집단을 본다.
+  if (rep.meta?.cancelPairsRemoved === true) {
+    for (const t of Object.keys(cache)) cache[t] = dropCancelledPairs(cache[t]);
+  }
   checkContamination(rep, cache);
   checkCounts(rep);
   checkValues(rep, cache);

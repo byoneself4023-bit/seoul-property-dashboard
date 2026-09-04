@@ -294,10 +294,10 @@ function numTag(block, tag) {
  * resultCode 검사를 포함한다.
  *
  * ── 계층 경계 (schemaVersion 3) ────────────────────────────────
- * 여기서 반환하는 확장 필드는 **캐시 계층 전용**이다. `aggregateItems`는
- * year/month/day/area/amount 5개만 읽으며 확장 필드를 보지 않는다. 따라서
- * data.json / dashboard.html 의 산출물은 이 확장으로 달라지지 않는다.
- * 확장 필드를 화면에 노출하려면 buildNormalized 단계에서 별도 집계를 만들어야 한다.
+ * 여기서 반환하는 확장 필드는 대부분 **캐시 계층 전용**이다. 예외는 해제 짝 제거
+ * (removeCancelledPairs, 2026-09-04) — `aggregateItems` 도 cdealType 과 짝 키 필드
+ * (name/umdNm/jibun/floor)를 읽어 취소된 계약을 걷어낸 뒤 5개 필드로 집계한다.
+ * 그 밖의 확장 필드를 화면에 노출하려면 buildNormalized 단계에서 별도 집계를 만들어야 한다.
  *
  * ── 유형별 제공 현황 (2026-08-12 API 실측) ──────────────────────
  *   name       apt=aptNm / rh=mhouseNm / offi=offiNm / sh=미제공(null)
@@ -429,6 +429,43 @@ function cacheSave(lawdCd, dealYmd, propType, data) {
 //  집계 (순수 함수 — 단위 테스트 가능)
 // ════════════════════════════════════════════════
 
+/** 해제 짝 판별 키. 국토부 API 는 계약 ID 를 주지 않아 이 조합이 사실상의 계약 식별자다. */
+function cancelPairKey(it) {
+  return [
+    it.name ?? '', it.umdNm ?? '', it.jibun ?? '',
+    it.year, it.month, it.day, it.amount, it.area, it.floor,
+  ].join('|');
+}
+
+/**
+ * 해제 신고와 그 짝을 함께 걷어낸다 — 취소된 계약은 0건으로 센다.
+ *
+ * API 는 취소된 계약을 정상 행 + 해제 행(cdealType='O') **두 줄**로 준다
+ * (2026-09-03 실측: 캐시 중복 그룹 17,571개 중 12,253개가 이 짝).
+ * 해제 행만 빼면 취소된 계약이 여전히 1건으로 남으므로, 같은
+ * (단지·법정동·지번·계약일·금액·면적·층) 키의 정상 행을 해제 행 수만큼 함께 뺀다.
+ * 짝이 없는 해제 행(원래 행이 응답에 없는 경우)은 해제 행만 빠진다.
+ * 본체 집계(aggregateItems)와 리포트(reportRows)가 이 함수 하나를 같이 쓴다.
+ */
+export function removeCancelledPairs(items) {
+  const cancels = new Map();
+  for (const it of items) {
+    if (it.cdealType !== 'O') continue;
+    const k = cancelPairKey(it);
+    cancels.set(k, (cancels.get(k) ?? 0) + 1);
+  }
+  if (cancels.size === 0) return items;
+  const out = [];
+  for (const it of items) {
+    if (it.cdealType === 'O') continue;
+    const k = cancelPairKey(it);
+    const left = cancels.get(k) ?? 0;
+    if (left > 0) { cancels.set(k, left - 1); continue; }
+    out.push(it);
+  }
+  return out;
+}
+
 /**
  * 파싱된 item 목록을 monthPeriods / weekPeriods 기준으로 집계한다.
  * 건수 외에 공간규격별(area) 및 금액대별(amount) 버킷 히스토그램도 반환한다.
@@ -483,12 +520,13 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
     return 'over6';
   }
 
+  // 취소된 계약(해제 행 + 그 짝인 정상 행)을 집계 전에 걷어낸다 (2026-09-04 결정).
+  // 이전에는 해제 거래도 그대로 포함했으나, 리포트와 기준이 갈라져 통일했다.
+  // 직거래는 여기서도 리포트와 달리 **포함**한다 — 이번 결정의 범위 밖이다.
+  items = removeCancelledPairs(items);
+
   for (const item of items) {
-    // 계층 경계: 집계는 이 5개만 읽는다. parseItems가 함께 보존하는 식별 필드와
-    // 왜곡 거래 식별 필드(cdealType/cdealDay/dealingGbn/rgstDate)는 캐시 계층
-    // 전용이며 여기서도, data.json에서도 쓰이지 않는다.
-    // 해제 거래(cdealType='O')도 지금은 거래량에 그대로 포함된다 — 기존 집계
-    // 방식을 바꾸지 않기 위한 의도적 선택. 필터는 리포트용 집계에서만 건다.
+    // 짝 제거 이후의 집계는 이 5개 필드만 읽는다. 나머지 식별 필드는 캐시 계층 전용.
     const { year, month, day, area, amount } = item;
     const ymKey = `${year}-${String(month).padStart(2, '0')}`;
 
@@ -682,7 +720,7 @@ export function recordDelta(lawdCd, propType, oldItems, newItems) {
 // ── 공통 필터 ───────────────────────────────────
 // 제외는 셋뿐이다. 등기(rgstDate)는 **기준선에도 걸지 않는다** — 과거의 더 비싼
 // 미등기 거래가 기준선에서 빠지면 현재 거래가 거짓 신고가로 뜬다.
-const REPORT_EXCLUDES = ['취소 신고 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이전 준공 제외`];
+const REPORT_EXCLUDES = ['취소된 계약 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이전 준공 제외`];
 
 function itemYmd(it) {
   return `${it.year}${String(it.month).padStart(2, '0')}${String(it.day).padStart(2, '0')}`;
@@ -706,11 +744,12 @@ function reportRows(rawByDistrict, propTypes) {
   const rows = [];
   for (const [district, raw] of Object.entries(rawByDistrict)) {
     for (const propType of propTypes) {
-      for (const it of (raw[propType] ?? [])) {
+      // 해제 짝 제거는 다른 필터보다 먼저 건다 — 해제 행과 정상 행의 dealingGbn 이
+      // 다른 경우가 실측에 있어, 직거래 필터를 먼저 걸면 짝이 어긋난다.
+      for (const it of removeCancelledPairs(raw[propType] ?? [])) {
         const area = Number(it.area);
         const amount = Number(it.amount);
         if (!Number.isFinite(area) || area <= 0 || !Number.isFinite(amount)) continue;
-        if (it.cdealType === 'O') continue;
         if (String(it.dealingGbn ?? '').includes('직거래')) continue;
         if (!(Number(it.buildYear) >= REPORT_MIN_BUILD_YEAR)) continue;
         const ymd = itemYmd(it);
@@ -927,15 +966,22 @@ function buildRebuildBlock(rebuild) {
  * 각주는 손으로 쓰지 않는다. 집계에 실제로 쓴 상수에서 만든다.
  * 상수를 바꾸면 각주가 따라 바뀌므로 코드와 문구가 어긋날 수 없다.
  */
-export function buildReportMeta(deltaCount) {
+export function buildReportMeta(deltaCount, deltaSince = null) {
   const f = REPORT_BASELINE_FROM;
+  // 신고분 라벨에 기간을 명시한다 — 수집이 몇 주 건너뛰면 "최근 신고분"이
+  // 건너뛴 기간 전체를 한 덩어리로 담게 되는데, 라벨만으로 그것이 보이게 한다.
+  const sinceLabel = deltaSince
+    ? `(${Number(deltaSince.slice(5, 7))}/${Number(deltaSince.slice(8, 10))} 이후)` : '';
   return {
     baselineFrom: f,
     baselineLabel: `${f.slice(0, 4)}년 ${Number(f.slice(4, 6))}월 이후 누적`,
-    target: '최근 신고분',
+    target: `최근 신고분${sinceLabel}`,
     targetNote: '직전 수집 대비 새로 들어온 거래. 국토부는 신고일을 제공하지 않아 캐시 대조로 구한다',
     targetCount: deltaCount,
     excludes: REPORT_EXCLUDES,
+    // 해제 짝 제거가 적용된 산출물임을 표시한다. verify-report.mjs 가 이 값을 보고
+    // 같은 규칙으로 재계산한다 — 구 규칙 data.js 도 검증할 수 있게 하기 위한 스위치다.
+    cancelPairsRemoved: true,
     compareUnit: '같은 단지 · 같은 평형(전용면적 정수부)',
     sortBy: '변동폭 큰 순',
     topN: REPORT_TOP_N,
@@ -951,6 +997,18 @@ export function buildReportMeta(deltaCount) {
     lagNote: '신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다',
     deltaLimit: '재수집 범위가 최근 2개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다',
   };
+}
+
+/**
+ * 직전 수집일 — 지금 덮어쓸 data.js 의 generatedAt. 신고분 라벨의 "(m/d 이후)"에 쓴다.
+ * 델타는 캐시와의 대조로 만들어지고, 캐시와 data.js 는 같은 커밋으로 움직이므로
+ * 이 날짜가 곧 "직전 캐시 상태의 시점"이다. 첫 수집 등으로 없으면 null.
+ */
+export function readPrevGeneratedAt(jsPath = join(__dirname, 'data.js')) {
+  try {
+    const src = readFileSync(jsPath, 'utf8');
+    return src.match(/"generatedAt"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)?.[1] ?? null;
+  } catch { return null; }
 }
 
 /**
@@ -979,7 +1037,7 @@ export function loadRebuildCache() {
  * @param {Object} rawByDistrict
  * @param {Object|null} rebuild  { api, rebuildRows, announcementRows } 또는 null
  */
-export function buildReport(rawByDistrict, rebuild) {
+export function buildReport(rawByDistrict, rebuild, deltaSince = null) {
   const aptRows = reportRows(rawByDistrict, ['apt']);
   const rhRows  = reportRows(rawByDistrict, ['rh']);
   const offiRows = reportRows(rawByDistrict, ['offi']);
@@ -989,7 +1047,8 @@ export function buildReport(rawByDistrict, rebuild) {
   const offi = findRecords(offiRows);
 
   const newCount = a => a.filter(r => r.isNew).length;
-  const meta = buildReportMeta(newCount(aptRows) + newCount(rhRows) + newCount(offiRows));
+  const meta = buildReportMeta(
+    newCount(aptRows) + newCount(rhRows) + newCount(offiRows), deltaSince);
 
   return {
     meta,
@@ -1681,16 +1740,25 @@ function runSelfTest() {
   assert('offi 자기닫힘 <cdealType/>→null',  idItems[3].cdealType === null, `실제: ${idItems[3].cdealType}`);
   assert('offi dealingGbn=직거래',           idItems[3].dealingGbn === '직거래', `실제: ${idItems[3].dealingGbn}`);
 
-  // 계층 경계: 식별 필드가 붙어도 집계 결과는 5개 필드만 보고 계산된다
+  // 해제 짝 제거(2026-09-04): 집계는 cdealType 과 짝 키 필드를 읽는다.
+  // idItems[0] 은 해제 행인데 짝(같은 키의 정상 행)이 없다 → 해제 행만 빠진다.
   const identAgg = aggregateItems(idItems, ['2026-06'], []);
-  const identStripped = aggregateItems(
-    idItems.map(({ year, month, day, area, amount }) => ({ year, month, day, area, amount })),
-    ['2026-06'], []
-  );
-  assert('계층 경계: 식별·왜곡 필드 유무로 집계가 달라지지 않음',
-    JSON.stringify(identAgg) === JSON.stringify(identStripped));
-  assert('식별 픽스처 2026-06 건수 5', identAgg.monthly[0] === 5,
+  assert('짝 없는 해제 행은 해제 행만 제외 (5건 중 1건 = 4)', identAgg.monthly[0] === 4,
     `실제: ${identAgg.monthly[0]}`);
+
+  const pairBase = { year: 2026, month: 6, day: 10, area: 84.9, amount: 90000,
+    name: '짝검증단지', umdNm: '짝동', jibun: '1-1', floor: 5 };
+  const pairItems = [
+    { ...pairBase, dealingGbn: '중개거래' },               // 취소된 계약의 정상 행 → 짝으로 제외
+    { ...pairBase, cdealType: 'O', dealingGbn: '직거래' }, // 해제 행 — dealingGbn 이 달라도 짝이다
+    { ...pairBase, floor: 6 },                             // 층이 다른 별개 거래 → 유지
+  ];
+  const pairLeft = removeCancelledPairs(pairItems);
+  assert('해제 행 + 짝 정상 행 함께 제외, 별개 거래만 남음',
+    pairLeft.length === 1 && pairLeft[0].floor === 6, `남은 행: ${pairLeft.length}`);
+  const pairAgg = aggregateItems(pairItems, ['2026-06'], []);
+  assert('aggregateItems 도 같은 짝 제거를 탄다 (3건 → 1건)', pairAgg.monthly[0] === 1,
+    `실제: ${pairAgg.monthly[0]}`);
 
   // parseTotalCount 검증
   assert('parseTotalCount APT = 6',
@@ -2161,7 +2229,7 @@ async function main() {
 
   // 리포트는 기존 집계와 분리해서 붙인다 — buildNormalized 의 반환값을
   // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
-  normalized.report = buildReport(rawByDistrict, loadRebuildCache());
+  normalized.report = buildReport(rawByDistrict, loadRebuildCache(), readPrevGeneratedAt());
   const rep = normalized.report;
   console.log(
     `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
