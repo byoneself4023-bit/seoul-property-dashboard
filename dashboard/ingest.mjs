@@ -720,7 +720,7 @@ export function recordDelta(lawdCd, propType, oldItems, newItems) {
 // ── 공통 필터 ───────────────────────────────────
 // 제외는 셋뿐이다. 등기(rgstDate)는 **기준선에도 걸지 않는다** — 과거의 더 비싼
 // 미등기 거래가 기준선에서 빠지면 현재 거래가 거짓 신고가로 뜬다.
-const REPORT_EXCLUDES = ['취소 신고 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이전 준공 제외`];
+const REPORT_EXCLUDES = ['취소된 계약 제외', '직거래 제외', `${REPORT_MIN_BUILD_YEAR}년 이전 준공 제외`];
 
 function itemYmd(it) {
   return `${it.year}${String(it.month).padStart(2, '0')}${String(it.day).padStart(2, '0')}`;
@@ -966,15 +966,22 @@ function buildRebuildBlock(rebuild) {
  * 각주는 손으로 쓰지 않는다. 집계에 실제로 쓴 상수에서 만든다.
  * 상수를 바꾸면 각주가 따라 바뀌므로 코드와 문구가 어긋날 수 없다.
  */
-export function buildReportMeta(deltaCount) {
+export function buildReportMeta(deltaCount, deltaSince = null) {
   const f = REPORT_BASELINE_FROM;
+  // 신고분 라벨에 기간을 명시한다 — 수집이 몇 주 건너뛰면 "최근 신고분"이
+  // 건너뛴 기간 전체를 한 덩어리로 담게 되는데, 라벨만으로 그것이 보이게 한다.
+  const sinceLabel = deltaSince
+    ? `(${Number(deltaSince.slice(5, 7))}/${Number(deltaSince.slice(8, 10))} 이후)` : '';
   return {
     baselineFrom: f,
     baselineLabel: `${f.slice(0, 4)}년 ${Number(f.slice(4, 6))}월 이후 누적`,
-    target: '최근 신고분',
+    target: `최근 신고분${sinceLabel}`,
     targetNote: '직전 수집 대비 새로 들어온 거래. 국토부는 신고일을 제공하지 않아 캐시 대조로 구한다',
     targetCount: deltaCount,
     excludes: REPORT_EXCLUDES,
+    // 해제 짝 제거가 적용된 산출물임을 표시한다. verify-report.mjs 가 이 값을 보고
+    // 같은 규칙으로 재계산한다 — 구 규칙 data.js 도 검증할 수 있게 하기 위한 스위치다.
+    cancelPairsRemoved: true,
     compareUnit: '같은 단지 · 같은 평형(전용면적 정수부)',
     sortBy: '변동폭 큰 순',
     topN: REPORT_TOP_N,
@@ -990,6 +997,18 @@ export function buildReportMeta(deltaCount) {
     lagNote: '신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다',
     deltaLimit: '재수집 범위가 최근 2개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다',
   };
+}
+
+/**
+ * 직전 수집일 — 지금 덮어쓸 data.js 의 generatedAt. 신고분 라벨의 "(m/d 이후)"에 쓴다.
+ * 델타는 캐시와의 대조로 만들어지고, 캐시와 data.js 는 같은 커밋으로 움직이므로
+ * 이 날짜가 곧 "직전 캐시 상태의 시점"이다. 첫 수집 등으로 없으면 null.
+ */
+export function readPrevGeneratedAt(jsPath = join(__dirname, 'data.js')) {
+  try {
+    const src = readFileSync(jsPath, 'utf8');
+    return src.match(/"generatedAt"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)?.[1] ?? null;
+  } catch { return null; }
 }
 
 /**
@@ -1018,7 +1037,7 @@ export function loadRebuildCache() {
  * @param {Object} rawByDistrict
  * @param {Object|null} rebuild  { api, rebuildRows, announcementRows } 또는 null
  */
-export function buildReport(rawByDistrict, rebuild) {
+export function buildReport(rawByDistrict, rebuild, deltaSince = null) {
   const aptRows = reportRows(rawByDistrict, ['apt']);
   const rhRows  = reportRows(rawByDistrict, ['rh']);
   const offiRows = reportRows(rawByDistrict, ['offi']);
@@ -1028,7 +1047,8 @@ export function buildReport(rawByDistrict, rebuild) {
   const offi = findRecords(offiRows);
 
   const newCount = a => a.filter(r => r.isNew).length;
-  const meta = buildReportMeta(newCount(aptRows) + newCount(rhRows) + newCount(offiRows));
+  const meta = buildReportMeta(
+    newCount(aptRows) + newCount(rhRows) + newCount(offiRows), deltaSince);
 
   return {
     meta,
@@ -2209,7 +2229,7 @@ async function main() {
 
   // 리포트는 기존 집계와 분리해서 붙인다 — buildNormalized 의 반환값을
   // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
-  normalized.report = buildReport(rawByDistrict, loadRebuildCache());
+  normalized.report = buildReport(rawByDistrict, loadRebuildCache(), readPrevGeneratedAt());
   const rep = normalized.report;
   console.log(
     `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
