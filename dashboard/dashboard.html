@@ -239,6 +239,8 @@
     <p class="text-xs mt-1 font-semibold" id="kpiNonDelta">—</p>
   </div>
   <p id="kpiProvisional" class="col-span-2 -mt-1 text-xs text-amber-600 hidden">※ 최신 기간은 신고 진행 중이라 <b>잠정치</b>입니다 (실제보다 낮게 표시).</p>
+  <!-- 집계 기준 각주 — 기간·잠정 여부와 무관하게 항상 보인다 (2026-09-04) -->
+  <p class="col-span-2 -mt-1 text-[11px] text-slate-400">직거래 포함 · 취소 신고 제외 · 최근 2개월만 재수집</p>
 </section>
 
 <!-- ─────────────────────────────────────────────
@@ -887,9 +889,20 @@ function renderKPI() {
   document.getElementById('kpiNon').textContent            = nonApt.toLocaleString();
   renderDelta('kpiAptDelta', apt,    prevApt);
   renderDelta('kpiNonDelta', nonApt, prevNonApt);
-  // 최신(미완결) 기간이면 KPI에도 잠정치 표기 (급락 오해 방지)
+  // 잠정 구간이면 KPI에 잠정치 표기 (급락 오해 방지).
+  // 규칙은 리포트와 동일하다 — 월간: 최근 2개월(ingest.mjs REPORT_TREND_PROVISIONAL 과
+  // 같은 값), 주간: 최근 4주(신고 기한 30일 반영). 2026-09-04 통일.
+  const PROVISIONAL_SPAN = { month: 2, week: 4 };
   const prov = document.getElementById('kpiProvisional');
-  if (prov) prov.classList.toggle('hidden', periodIndex !== periods.length - 1);
+  if (prov) {
+    const span = PROVISIONAL_SPAN[granularity] ?? 1;
+    const inProvisional = periodIndex >= periods.length - span;
+    prov.classList.toggle('hidden', !inProvisional);
+    if (inProvisional) {
+      const unit = granularity === 'week' ? `${span}주` : `${span}개월`;
+      prov.innerHTML = `※ 최근 ${unit}은 신고 진행 중이라 <b>잠정치</b>입니다 (실제보다 낮게 표시).`;
+    }
+  }
 }
 
 // B. 카토그램 + 범례 동적 업데이트 + 순위 배지
