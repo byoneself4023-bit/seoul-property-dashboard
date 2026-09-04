@@ -1,0 +1,106 @@
+# 리포트 PNG 5장 — 러너에서 검증(verify-report) 통과분만 만들어 저장소에 쌓고 발행한다.
+#
+# cron 이 없다. 매주는 ingest.yml 이 데이터 병합 뒤 이 워크플로를 호출하고,
+# 사람이 Actions 탭에서 수동 실행할 수도 있다(수집 없이 현재 데이터로 렌더).
+# 이 워크플로가 실패하면 발행(pages.yml)까지 가지 않는다 — 검증을 통과하지 못한
+# 그림도, 그와 어긋난 데이터도 라이브에 나가지 않는다.
+#
+# 산출 구조 (dashboard/reports/, git 추적):
+#   reports/<수집일 YYYY-MM-DD>/01.png~05.png  — 날짜별 누적, 지난주 것은 지우지 않는다
+#   reports/latest/01.png~05.png               — 고정 경로, 매번 덮어쓴다
+# 파일명이 ASCII 번호인 이유: 외부 사이트(바른부동산)가 참조하는 URL 에
+# 한글 퍼센트 인코딩을 넣지 않기 위해서다. 01=신고가신저가 02=거래1위
+# 03=비아파트 04=거래량추이 05=정비사업.
+name: 리포트 생성
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # 마지막의 `gh workflow run pages.yml` 이 이 권한을 쓴다 — ingest.yml 과 같은 이유.
+  actions: write
+
+# PNG 커밋이 겹치면 latest/ 를 두 실행이 다투게 된다. 하나씩 처리한다.
+concurrency:
+  group: report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # ingest.yml 이 병합 직후 호출하므로 main 이 곧 방금 병합된 최신 데이터다.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      # 이하 크롬 설치 3단계는 verify.yml 과 동일하다 — 새 방식을 발명하지 않는다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25'
+          cache: npm
+
+      # puppeteer 가 postinstall 에서 Chrome for Testing 을 내려받는다.
+      - name: 의존성 설치 (puppeteer + Chrome)
+        run: npm ci
+
+      # Ubuntu 23.10+ 는 AppArmor 로 비특권 user namespace 를 막아 크롬 샌드박스가 뜨지 않는다.
+      - name: 크롬 샌드박스 허용 (AppArmor 제한 해제)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # render-report.mjs 가 verify-report.mjs 를 먼저 부르고, 실패하면 PNG 를
+      # 쓰지 않고 exit 1 — 그 실패가 곧 이 잡의 실패이고 발행이 막힌다.
+      - name: 검증 + 렌더
+        run: npm run report
+
+      - name: 날짜 폴더로 복사
+        id: stage
+        run: |
+          set -euo pipefail
+          DATE=$(grep -oE '"generatedAt"[[:space:]]*:[[:space:]]*"[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+                   dashboard/data.js | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+          [ -n "$DATE" ] || { echo "generatedAt 추출 실패 — data.js 확인"; exit 1; }
+          DEST="dashboard/reports/$DATE"
+          mkdir -p "$DEST" dashboard/reports/latest
+          cp "dashboard/out/매주/01-신고가신저가.png" "$DEST/01.png"
+          cp "dashboard/out/매주/02-거래1위.png"      "$DEST/02.png"
+          cp "dashboard/out/매주/03-비아파트.png"     "$DEST/03.png"
+          cp "dashboard/out/매주/04-거래량추이.png"   "$DEST/04.png"
+          cp "dashboard/out/월간/정비사업.png"        "$DEST/05.png"
+          cp "$DEST"/01.png "$DEST"/02.png "$DEST"/03.png "$DEST"/04.png "$DEST"/05.png \
+             dashboard/reports/latest/
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      # main 은 ruleset 보호라 PR 로 들어간다 — ingest.yml 과 같은 경로.
+      # 같은 날 재실행 등으로 PNG 가 바이트 단위까지 같으면 커밋 없이 발행만 부른다.
+      - name: PR 로 반영 + 발행 호출
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git add dashboard/reports
+          if git diff --cached --quiet; then
+            echo "PNG 변경 없음 — 커밋 없이 발행만 호출"
+          else
+            BRANCH="report/$(date -u +%Y%m%d-%H%M%S)"
+            git config user.name  'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git checkout -b "$BRANCH"
+            git commit -m "report: PNG ${{ steps.stage.outputs.date }}" \
+                       -m "GitHub Actions 자동 생성 (실행 ${{ github.run_id }}). verify-report 통과분."
+            git push origin "$BRANCH"
+            gh pr create --base main --head "$BRANCH" \
+              --title "report: PNG ${{ steps.stage.outputs.date }}" \
+              --body "$(printf '%s\n' \
+                '자동 생성된 리포트 PNG 다. 요구 승인이 0건이라 승인 없이 병합된다.' \
+                '' \
+                "실행: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"
+            gh pr merge "$BRANCH" --squash --delete-branch
+          fi
+
+          # GITHUB_TOKEN 의 병합은 push 트리거를 발동시키지 않으므로 발행을 직접 부른다.
+          gh workflow run pages.yml --ref main
+          echo "발행(pages.yml) 요청 완료"
