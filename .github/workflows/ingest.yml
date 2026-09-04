@@ -124,11 +124,12 @@ jobs:
           gh pr merge "$BRANCH" --squash --delete-branch
 
           # GITHUB_TOKEN 이 만든 push 로는 다른 워크플로가 트리거되지 않는다.
-          # 즉 병합만으로는 pages.yml 이 돌지 않는다(실측 확인, 2026-08-13).
-          # 발행을 직접 부른다. 수집이 성공하고 실제로 데이터가 바뀐 경우에만
-          # 여기까지 오므로, 발행은 수집 성공에 종속된다.
-          gh workflow run pages.yml --ref main
-          echo "발행(pages.yml) 요청 완료"
+          # 즉 병합만으로는 후속 워크플로가 돌지 않는다(실측 확인, 2026-08-13).
+          # 리포트 생성(report.yml)을 직접 부른다 — 그쪽이 PNG 를 만들어 커밋한 뒤
+          # 발행(pages.yml)까지 부른다(2026-09-04 체인 연결). 수집이 성공하고 실제로
+          # 데이터가 바뀐 경우에만 여기까지 오므로, 리포트·발행은 수집 성공에 종속된다.
+          gh workflow run report.yml --ref main
+          echo "리포트 생성(report.yml) 요청 완료 — 발행은 그쪽에서 이어진다"
 
       - name: 결과
         if: always()

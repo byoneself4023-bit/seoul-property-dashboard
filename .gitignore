@@ -209,10 +209,12 @@ data.json
 !dashboard/.cache/
 !dashboard/.cache/ingest/
 !dashboard/.cache/ingest/**
-# 정비사업 캐시(~15MB, 51파일)는 추적하지 않는다. 서울 열린데이터광장은 호출 횟수
-# 제한이 없고 51회면 끝나므로 필요할 때 다시 받으면 된다. 매달 쌓을 이유가 없다.
-# 위 !dashboard/.cache/ 재포함 때문에 명시하지 않으면 추적 대상이 된다.
-dashboard/.cache/rebuild/
+# 정비사업 캐시(~15MB, 51파일)도 2026-09-04 부터 추적한다. 원래는 "필요할 때
+# 다시 받으면 된다"고 제외했지만, 러너가 수집(ingest.mjs 의 loadRebuildCache)과
+# 리포트 PNG ⑤ 생성 양쪽에서 이 캐시를 읽게 되면서 러너와 로컬이 같은 캐시를
+# 봐야 하는 이유가 ingest 캐시와 같아졌다. 갱신은 월 1회 로컬 수집 후 커밋.
+!dashboard/.cache/rebuild/
+!dashboard/.cache/rebuild/**
 
 # 훅 상태 파일 (검증 재시도 카운터·로그)
 .claude/.state/
