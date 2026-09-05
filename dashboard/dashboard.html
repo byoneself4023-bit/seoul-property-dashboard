@@ -402,6 +402,44 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
 
    ══════════════════════════════════════════════════════════════ */
 
+/* ── 공간규격·금액대: 도넛 → 가로 100% 누적 막대 두 줄 (2026-09-05) ──
+   도넛(#districtChart)과 각주는 지우지 않고 화면에서만 뺐다. 되살리려면 아래 두 줄을 지운다.
+   기존 renderDistrictChart·switchChartMode 는 그대로 돌고 있다. */
+#v2PaneChart > section:has(#districtChart) > div[style*="320px"]{display:none!important}
+#chartNote{display:none!important}
+/* #v2Mix 는 이 막대로 대체됐다(값은 같은 room/price). 되살리려면 아래 한 줄을 지운다. */
+#v2Mix{display:none!important}
+
+#v2Bars{margin-top:10px}
+.v2-bwrap{margin-bottom:9px;padding-top:11px}
+.v2-bhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0 0 4px}
+.v2-bhead b{font-size:11.5px;font-weight:700;color:var(--bd-paper)}
+.v2-bhead span{font-size:10px;color:var(--bd-muted)}
+.v2-bar{position:relative}
+.v2-segs{display:flex;height:26px;border-radius:7px;overflow:hidden;
+  background:#161B23;border:1px solid #262E3A}
+.v2-seg{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;
+  font-size:10.5px;line-height:1;white-space:nowrap;overflow:hidden;color:#14181F;font-weight:700}
+.v2-seg i{font-style:normal;font-family:var(--bd-num);font-variant-numeric:tabular-nums}
+.v2-seg.s1{background:rgba(255,107,94,.92)}
+.v2-seg.s2{background:rgba(255,107,94,.55);color:#FFF1EF}
+.v2-seg.s3{background:rgba(107,168,255,.55);color:#F0F6FF}
+.v2-seg.empty{background:#1B212B;color:var(--bd-muted);font-weight:600}
+/* 서울 전체 비율 눈금 — 막대 위에 얇게 */
+.v2-tick{position:absolute;top:-2px;height:30px;width:2px;background:#E8ECF2;
+  box-shadow:0 0 0 1px rgba(20,24,31,.55);pointer-events:none}
+.v2-tick::after{content:attr(data-label);position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+  font-size:8.5px;color:var(--bd-muted);white-space:nowrap;font-weight:600}
+/* 휴대폰: 눈금 라벨이 머리글과 겹친다 — 선만 남긴다(수치는 아래 문장에 있다) */
+@media (max-width:640px){
+  .v2-tick::after{display:none}
+  .v2-bwrap{padding-top:4px}
+  .v2-bhead{flex-wrap:wrap;gap:2px 8px}
+  .v2-bhead span{font-size:9.5px;line-height:1.3}
+}
+#v2BarsNote{font-size:11px;color:var(--bd-paper);margin:8px 0 0;line-height:1.45}
+#v2BarsNote b{color:var(--bd-coral);font-family:var(--bd-num)}
+
 /* 휴대폰 타임라인 — 이전·다음·슬라이더·재생을 한 줄에 넣는다.
    버튼 글자는 지우고 화살표만 남긴다(font-size:0 + ::before). aria-label 은 그대로라
    화면 낭독기에는 "이전 기간"·"다음 기간"으로 읽힌다. */
@@ -559,8 +597,20 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
     <div id="v2PaneWeek">
       <!-- 직거래·취소 신호. 값이 없으면(수집 전 기간) v2Signals 가 줄을 통째로 숨긴다. -->
       <div class="v2-line" id="v2Signals" hidden></div>
-      <!-- 물건 구성 한 줄 — 감사 때 만든 것. 차트를 되살린 뒤에도 남겨 뒀다(겹치면 이 줄을 지우면 된다). -->
+      <!-- 물건 구성 한 줄 — v2Bars 막대로 대체됐다(CSS 로 숨김). 값은 같은 room/price 다. -->
       <div class="v2-line" id="v2Mix" hidden></div>
+      <!-- 공간규격·금액대 누적 막대. v2Tab 이 활성 탭으로 옮겨 붙인다(같은 표현을 세 탭에서 쓴다). -->
+      <div id="v2Bars">
+        <div class="v2-bwrap">
+          <div class="v2-bhead"><b>면적</b><span>전체 거래 · 전용 40㎡≈12평 · 60㎡≈18평</span></div>
+          <div class="v2-bar"><div class="v2-segs" id="v2BarArea"></div></div>
+        </div>
+        <div class="v2-bwrap">
+          <div class="v2-bhead"><b>금액대</b><span>비아파트(연립·다세대 + 단독·다가구 + 오피스텔)</span></div>
+          <div class="v2-bar"><div class="v2-segs" id="v2BarPrice"></div></div>
+        </div>
+        <p id="v2BarsNote"></p>
+      </div>
       <p class="v2-sect" id="v2SparkLabel">최근 12기간 추이</p>
       <div id="v2Spark"></div>
       <p class="v2-note"><span class="v2-hatch" aria-hidden="true"></span><span id="v2SparkNote">—</span></p>
@@ -2385,7 +2435,8 @@ function setViewMode(mode) {
       : (top ? `/ ${rankOf(selectedDistrict, key).of}개 구 · 1위 ${top.district} ${(top.apt + top.nonApt).toLocaleString()}건` : '');
 
     v2Signals(key);
-    v2Mix(key);
+    v2Mix(key);   // 화면에서는 숨김 — v2Bars 가 대신한다
+    v2Bars(key);
 
     const unitLabel = granularity === 'week' ? '주' : '개월';
     $('v2SparkLabel').textContent = `최근 ${series.length}${unitLabel} 추이`;
@@ -2430,6 +2481,97 @@ function setViewMode(mode) {
     el.hidden = false;
   }
 
+  // ── 공간규격·금액대 누적 막대 (2026-09-05) ────────────────
+  // 도넛 두 개를 대신한다. data.js 의 room/price 만 쓰고, 서울 전체 비율은
+  // 25개 구의 같은 기간 버킷을 그 자리에서 합쳐 구한다.
+  // 주의: room 은 아파트 포함 전 유형, price 는 비아파트만이다(집계 범위가 다르다).
+  const AREA_SEGS  = [
+    { key: 'studio', name: '40㎡ 이하', sub: '약 12평 이하' },
+    { key: 'two',    name: '40~60㎡',  sub: '12~18평' },
+    { key: 'three',  name: '60㎡ 초과', sub: '18평 이상' },
+  ];
+  const PRICE_SEGS = [
+    { key: 'under3', name: '3억 미만' },
+    { key: 'under6', name: '3~6억' },
+    { key: 'over6',  name: '6억 이상' },
+  ];
+
+  function seoulBuckets(key, field, segs) {
+    const D = window.__DASHBOARD_DATA__ || {};
+    const idx = periods.indexOf(key);
+    const out = {}; segs.forEach(g => out[g.key] = 0);
+    if (idx < 0 || !D.byDistrict) return out;
+    for (const name of Object.keys(D.byDistrict)) {
+      const row = (D.byDistrict[name][granularity] || [])[idx];
+      if (!row || !row[field]) continue;
+      segs.forEach(g => { out[g.key] += row[field][g.key] || 0; });
+    }
+    return out;
+  }
+  function pct(part, total) { return total > 0 ? (part / total) * 100 : 0; }
+
+  // 막대 하나를 그리고, 서울 전체 비율 눈금을 얹는다.
+  // 눈금 위치는 누적 비율이다 — 첫 구간의 서울 비율이 52%면 왼쪽에서 52% 지점에 선다.
+  function drawBar(el, counts, seoulCounts, segs) {
+    const total = segs.reduce((s, g) => s + (counts[g.key] || 0), 0);
+    el.innerHTML = '';
+    (el.parentElement || el).querySelectorAll('.v2-tick').forEach(t => t.remove());
+    if (total === 0) {
+      el.innerHTML = '<span class="v2-seg empty" style="flex:1 1 100%">이 기간 거래 없음</span>';
+      return null;
+    }
+    const shares = segs.map(g => pct(counts[g.key] || 0, total));
+    segs.forEach((g, i) => {
+      const span = document.createElement('span');
+      span.className = 'v2-seg s' + (i + 1);
+      span.style.flex = `${shares[i]} 1 0`;
+      span.title = `${g.name}${g.sub ? ' (' + g.sub + ')' : ''} ${counts[g.key] || 0}건 ${Math.round(shares[i])}%`;
+      // 조각이 좁으면 이름을 버리고 %만, 더 좁으면 비운다(CSS overflow 로 잘린다)
+      span.innerHTML = shares[i] >= 18
+        ? `${g.name} <i>${Math.round(shares[i])}%</i>`
+        : (shares[i] >= 7 ? `<i>${Math.round(shares[i])}%</i>` : '');
+      el.appendChild(span);
+    });
+    if (!seoulCounts) return { shares, total };
+    const sTotal = segs.reduce((s, g) => s + (seoulCounts[g.key] || 0), 0);
+    if (sTotal === 0) return { shares, total };
+    const sShares = segs.map(g => pct(seoulCounts[g.key] || 0, sTotal));
+    const tick = document.createElement('span');
+    tick.className = 'v2-tick';
+    tick.style.left = `${Math.min(99.6, Math.max(0.4, sShares[0]))}%`;
+    tick.setAttribute('data-label', `서울 전체 ${Math.round(sShares[0])}%`);
+    (el.parentElement || el).appendChild(tick);   // 조각 상자 밖(.v2-bar)에 붙여 라벨이 잘리지 않게
+    return { shares, total, sShares };
+  }
+
+  function v2Bars(key) {
+    const wrap = $('v2Bars');
+    // 서울 전체를 보고 있으면 25개 구를 합쳐 막대를 그린다. 눈금·문장은 자기 자신과의
+    // 비교라 뜻이 없어 생략한다.
+    const isSeoul = selectedDistrict === null;
+    const row = isSeoul
+      ? { room: seoulBuckets(key, 'room', AREA_SEGS), price: seoulBuckets(key, 'price', PRICE_SEGS) }
+      : rawPeriodRow(key);
+    if (!row || !row.room) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    const sArea  = isSeoul ? null : seoulBuckets(key, 'room',  AREA_SEGS);
+    const sPrice = isSeoul ? null : seoulBuckets(key, 'price', PRICE_SEGS);
+    const a = drawBar($('v2BarArea'),  row.room,        sArea,  AREA_SEGS);
+    const p = drawBar($('v2BarPrice'), row.price || {}, sPrice, PRICE_SEGS);
+
+    const note = $('v2BarsNote');
+    if (isSeoul || !a || !a.sShares) { note.innerHTML = ''; return; }
+    // 서울 전체와 차이가 가장 큰 구간 하나만 문장으로 쓴다(면적·금액 통틀어)
+    const cands = [];
+    AREA_SEGS.forEach((g, i)  => cands.push({ label: `${g.name}`, mine: a.shares[i], seoul: a.sShares[i], scope: '' }));
+    if (p && p.sShares) PRICE_SEGS.forEach((g, i) => cands.push({ label: `${g.name}`, mine: p.shares[i], seoul: p.sShares[i], scope: '비아파트 ' }));
+    const best = cands.sort((x, y) => Math.abs(y.mine - y.seoul) - Math.abs(x.mine - x.seoul))[0];
+    if (!best) { note.textContent = ''; return; }
+    const dir = best.mine >= best.seoul ? '높음' : '낮음';
+    note.innerHTML = `${best.scope}${best.label} 비중 <b>${Math.round(best.mine)}%</b>, ` +
+                     `서울 전체 <b>${Math.round(best.seoul)}%</b>보다 ${dir}`;
+  }
+
   // ── 탭 ──────────────────────────────────────────────────
   // 탭 4개(이번 주 · 거래추이 · 공간규격 · 금액대). 감사 #18 은 2개를 제안했으나
   // 대표 확인 전까지 되돌려 뒀다(2026-09-05).
@@ -2443,6 +2585,9 @@ function setViewMode(mode) {
     });
     $('v2PaneWeek').hidden  = t !== 'week';
     $('v2PaneChart').hidden = t === 'week';
+    // 같은 막대를 세 탭에서 쓴다 — 활성 창으로 옮겨 붙인다
+    const bars = $('v2Bars');
+    if (bars) (t === 'week' ? $('v2PaneWeek') : $('v2PaneChart')).appendChild(bars);
     const bar = $('v2BarSection');
     if (bar) bar.hidden = t !== 'trend';    // 25구 막대차트는 거래추이 탭에서만
     if (t !== 'week') switchChartMode(t);    // 기존 함수를 그대로 부른다
