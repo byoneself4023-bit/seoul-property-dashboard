@@ -402,6 +402,12 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
 
    ══════════════════════════════════════════════════════════════ */
 
+/* 공간규격·금액대 탭이 같은 막대 두 줄을 보여 줘 하나로 합쳤다(2026-09-05).
+   #v2Tab-room 이 "물건 구성" 탭이 되고 #v2Tab-price 는 화면에서만 뺐다 —
+   버튼·onclick·v2Tab('price') 경로는 그대로 살아 있다. 되살리려면 아래 한 줄을 지우고
+   #v2Tab-room 의 글자를 "공간규격"으로 되돌린다. */
+#v2Tab-price{display:none!important}
+
 /* ── 공간규격·금액대: 도넛 → 가로 100% 누적 막대 두 줄 (2026-09-05) ──
    도넛(#districtChart)과 각주는 지우지 않고 화면에서만 뺐다. 되살리려면 아래 두 줄을 지운다.
    기존 renderDistrictChart·switchChartMode 는 그대로 돌고 있다. */
@@ -587,7 +593,8 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
       <!-- 감사 #18 은 탭 2개를 제안했으나 대표 확인 전까지 4개로 되돌려 뒀다(2026-09-05). -->
       <button class="v2-tab" id="v2Tab-week"  role="tab" aria-selected="true"  onclick="v2Tab('week')">이번 주</button>
       <button class="v2-tab" id="v2Tab-trend" role="tab" aria-selected="false" onclick="v2Tab('trend')">거래추이</button>
-      <button class="v2-tab" id="v2Tab-room"  role="tab" aria-selected="false" onclick="v2Tab('room')">공간규격</button>
+      <!-- 합친 탭. #v2Tab-price 는 CSS 로 숨겼고 경로는 살아 있다(v2Tab 이 room 으로 넘긴다). -->
+      <button class="v2-tab" id="v2Tab-room"  role="tab" aria-selected="false" onclick="v2Tab('room')">물건 구성</button>
       <button class="v2-tab" id="v2Tab-price" role="tab" aria-selected="false" onclick="v2Tab('price')">금액대</button>
     </div>
     <div class="v2-dhead">
@@ -2578,6 +2585,8 @@ function setViewMode(mode) {
   let v2CurrentTab = 'week';
   window.v2Tab = function (t) {
     if (!['week', 'trend', 'room', 'price'].includes(t)) t = 'week';
+    // 금액대는 물건 구성 탭에 합쳐졌다 — 기억된 값이나 직접 호출도 room 으로 보낸다
+    if (t === 'price') t = 'room';
     v2CurrentTab = t;
     ['week', 'trend', 'room', 'price'].forEach(k => {
       const b = $('v2Tab-' + k);
