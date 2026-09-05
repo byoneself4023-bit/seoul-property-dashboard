@@ -227,6 +227,10 @@ drive-docs/
 # 파일은 로컬에 남겨 두고 추적만 하지 않는다.
 docs/저장소-현황-조사.md
 
+# 화면 확인용 스크린샷 — 확인하고 버리는 산출물이라 추적하지 않는다.
+# 남기는 것은 latest-desktop.png / latest-mobile.png 두 장뿐이고 매번 덮어쓴다.
+dashboard/screenshots/
+
 # 리포트 화면 캡처 — 확인용 산출물. 저장소에 넣지 않는다
 /report.png
 # render-report.mjs 가 내는 PNG. 위 out/ 규칙에도 걸리지만 의도를 남긴다
