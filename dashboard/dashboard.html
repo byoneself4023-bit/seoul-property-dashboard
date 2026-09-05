@@ -277,6 +277,156 @@ input[type=range]{background:transparent}
 //# sourceMappingURL=chart.umd.min.js.map
 
   </script>
+
+<style id="v2-skin">
+/* ══ 2차 리뉴얼 스킨 ══════════════════════════════════════════
+   기존 클래스는 JS 가 다시 칠하므로(renderKPI·switchChartMode 등)
+   여기서는 id 와 상태 속성으로 덮어쓴다. JS 는 건드리지 않는다.
+   대시보드 화면일 때만 적용한다 — 리포트 탭은 그대로 둔다. */
+body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-paper)!important}
+
+/* 본문 카드·글자색 — dashView 안으로만 한정 */
+#dashView .bg-white{background:#1B212B!important;border-color:#2A313C!important}
+#dashView .bg-slate-50,#dashView .bg-slate-100{background:#161B23!important}
+#dashView .text-slate-900,#dashView .text-slate-800{color:#E8ECF2!important}
+#dashView .text-slate-700,#dashView .text-slate-600,#dashView .text-slate-500{color:#9AA4B5!important}
+#dashView .border-slate-200,#dashView .border-slate-300{border-color:#2A313C!important}
+
+/* ── ① 헤드라인 ─────────────────────────────────── */
+#heroV2{position:relative;overflow:hidden;width:100vw;margin-left:calc(50% - 50vw);
+  margin-top:-16px;margin-bottom:18px;border-bottom:1px solid var(--bd-slate)}
+#heroV2 .v2-media{position:absolute;inset:0;z-index:0;background:#14181F no-repeat right center/cover;
+  background-image:url('assets/hero-seoul.jpg')}
+@supports (background-image:image-set(url('assets/hero-seoul.webp') type('image/webp'))){
+  #heroV2 .v2-media{background-image:image-set(url('assets/hero-seoul.webp') type('image/webp'),
+                                               url('assets/hero-seoul.jpg') type('image/jpeg'))}
+}
+#heroV2 video{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover;object-position:right center}
+#heroV2 .v2-scrim{position:absolute;inset:0;z-index:1;pointer-events:none;background:
+  linear-gradient(100deg,rgba(20,24,31,.95) 0%,rgba(20,24,31,.82) 34%,rgba(20,24,31,.44) 64%,rgba(20,24,31,.20) 100%),
+  linear-gradient(180deg,rgba(20,24,31,.86) 0%,rgba(20,24,31,.28) 30%,transparent 60%)}
+#heroV2 .v2-in{position:relative;z-index:2;max-width:72rem;margin:0 auto;padding:40px clamp(16px,4vw,28px) 34px}
+#v2Kicker{color:var(--bd-coral);font-weight:700;font-size:12px;letter-spacing:.14em;margin:0 0 12px}
+#v2Headline{font-size:clamp(24px,4.2vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.16;
+  margin:0 0 8px;max-width:24ch;color:#E8ECF2}
+#v2Headline .hl-accent{color:var(--bd-coral);white-space:nowrap}
+#v2Headline .hl-num{font-family:var(--bd-num);font-variant-numeric:tabular-nums}
+#v2Sub{color:var(--bd-muted);font-size:12.5px;margin:0 0 20px}
+/* KPI 칩 — 휴대폰에서도 한 줄 */
+.v2-chips{display:flex;gap:8px;flex-wrap:nowrap}
+.v2-chip{flex:1 1 0;min-width:0;background:rgba(27,33,43,.74);border:1px solid var(--bd-slate);
+  border-radius:999px;padding:7px 13px;display:flex;align-items:baseline;gap:7px;overflow:hidden}
+.v2-chip .lab{font-size:10.5px;color:var(--bd-muted);white-space:nowrap;flex:0 0 auto}
+.v2-chip b{font-family:var(--bd-num);font-variant-numeric:tabular-nums;font-size:15px;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v2-chip .dn{color:var(--bd-fall)} .v2-chip .up{color:var(--bd-coral)}
+
+/* ── ②③ 무대 ────────────────────────────────────── */
+#v2Stage{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:18px;align-items:start}
+#v2Left,#v2Right{min-width:0}
+#v2Right{position:sticky;top:12px;background:#1B212B;border:1px solid var(--bd-slate);border-radius:16px;padding:14px}
+#v2Left > section{margin:0 0 14px!important}
+
+/* 패널 탭 — 맨 위 */
+.v2-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.v2-tab{appearance:none;background:transparent;border:1px solid var(--bd-slate);color:#E8ECF2;
+  font:inherit;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer}
+.v2-tab:hover{border-color:var(--bd-coral);color:var(--bd-coral)}
+.v2-tab[aria-selected="true"]{background:var(--bd-coral);border-color:var(--bd-coral);color:#14181F;font-weight:700}
+.v2-dhead{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;
+  padding-bottom:10px;border-bottom:1px solid var(--bd-slate);margin-bottom:12px}
+#v2PanelName{font-size:24px;font-weight:800;letter-spacing:-.03em;margin:0;line-height:1.2;color:#E8ECF2}
+#v2PanelName small{display:block;font-size:11px;color:var(--bd-muted);font-weight:600}
+.v2-rank{text-align:right;font-size:10.5px;color:var(--bd-muted);flex:0 0 auto}
+.v2-rank b{display:block;font-family:var(--bd-num);font-size:19px;color:var(--bd-coral);font-weight:700}
+.v2-sect{font-size:10.5px;color:var(--bd-muted);letter-spacing:.04em;margin:14px 0 6px}
+#v2Spark svg{width:100%;height:62px;display:block}
+.v2-note{font-size:10.5px;color:var(--bd-muted);margin:6px 0 0;display:flex;align-items:center;gap:6px}
+.v2-hatch{width:20px;height:9px;border-radius:2px;flex:0 0 auto;
+  background:repeating-linear-gradient(45deg,rgba(154,164,181,.42) 0 3px,transparent 3px 7px);
+  border:1px solid rgba(154,164,181,.34)}
+
+/* ── ④ 잠정 — 빨간 경고 대신 회색 한 줄 ───────────── */
+#kpiProvisional{color:var(--bd-muted)!important;background:transparent!important;border:0!important;
+  font-size:11px!important;padding:0!important;margin-top:6px!important}
+#kpiProvisional strong,#kpiProvisional b{color:var(--bd-muted)!important;font-weight:600!important}
+
+/* ── ⑥ 컨트롤 재작화 (브라우저 기본 금지) ─────────── */
+#btnSeoulAll,#btnPrev,#btnNext,#playBtn,#yearBtnGroup button{
+  border-radius:999px!important;font-family:var(--bd-kr)!important;box-shadow:none!important}
+#btnPrev,#btnNext,#yearBtnGroup button,#btnSeoulAll[aria-pressed="false"]{
+  background:transparent!important;border:1px solid var(--bd-slate)!important;color:#E8ECF2!important}
+#btnPrev:hover,#btnNext:hover,#yearBtnGroup button:hover,#btnSeoulAll[aria-pressed="false"]:hover{
+  border-color:var(--bd-coral)!important;color:var(--bd-coral)!important}
+#btnSeoulAll[aria-pressed="true"],#playBtn,#yearBtnGroup button[aria-pressed="true"]{
+  background:var(--bd-coral)!important;border:1px solid var(--bd-coral)!important;color:#14181F!important;font-weight:700!important}
+#rangeStart,#rangeEnd{appearance:none;-webkit-appearance:none;background:#161B23!important;
+  border:1px solid var(--bd-slate)!important;color:#E8ECF2!important;border-radius:999px!important;
+  padding:5px 26px 5px 12px!important;font-size:12px;
+  background-image:linear-gradient(45deg,transparent 50%,#9AA4B5 50%),linear-gradient(135deg,#9AA4B5 50%,transparent 50%);
+  background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+/* 타임라인 손잡이 */
+#timeSlider{appearance:none;-webkit-appearance:none;height:22px;background:transparent!important;cursor:pointer}
+#timeSlider::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:#2A323E}
+#timeSlider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:20px;height:20px;margin-top:-8px;
+  border-radius:999px;background:#E8ECF2;border:3px solid var(--bd-coral);box-shadow:0 2px 8px rgba(0,0,0,.5)}
+/* ── ① 옛 헤더 조각 정리 ─────────────────────────────
+   #dataBadge·#headerDate 는 기존 JS 가 textContent 를 쓰므로(가드 없음)
+   지우지 않고 숨긴다. 지우면 renderAll 이 null 참조로 죽는다. */
+#dataBadge,#headerDate,.bd-actions{display:none!important}
+#v2TitleRow{display:none!important}
+/* 토글 묶음은 v2Move 가 헤더로 옮긴다 — 휴대폰에서 잘리지 않게 줄바꿈 허용 */
+.bd-topbar{flex-wrap:wrap;row-gap:8px}
+.bd-topbar #v2Modes{margin-left:auto}
+.bd-topbar #v2Modes > div{background:transparent!important;border-color:var(--bd-slate)!important}
+@media (max-width:480px){
+  .bd-topbar #v2Modes{margin-left:0;width:100%}
+  .bd-topbar #v2Modes > div{width:100%;justify-content:center}
+}
+/* ── ③ 패널 안 빨간 잠정 문장은 없앤다(차트 아래 빗금 한 줄로 대체) ── */
+#kpiProvisional{display:none!important}
+/* ── ④ 휴대폰 범례 — 한 줄 칩 네 개 ───────────────── */
+@media (max-width:900px){
+  #v2Legend{display:flex!important;flex-wrap:nowrap!important;gap:5px!important;width:100%}
+  #v2Legend > span{flex:1 1 0;min-width:0;justify-content:center;
+    background:#161B23;border:1px solid #262E3A;border-radius:999px;padding:4px 6px;font-size:9.5px}
+  #v2Legend > span > span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+/* 서울 전체일 때는 순위 칸을 숨긴다 */
+#v2Right[data-scope="seoul"] .v2-rank{display:none}
+/* 주간 모드에서 못 쓰는 컨트롤은 아예 숨긴다("사용 불가" 문구를 남기지 않는다) */
+body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:none!important}
+/* 서울 전체 되돌리기 — 패널 탭 줄 오른쪽 끝으로 */
+.v2-tabs #btnSeoulAll{margin-left:auto;font-size:12px!important;padding:5px 12px!important}
+/* 원래 차트 탭 줄은 패널 탭이 대신한다 */
+#chartTab-trend,#chartTab-room,#chartTab-price{display:none!important}
+
+/* ── 지형도 — 야경 위 창문 불빛 ────────────────────── */
+#cartogramMap{background:#0F1319;border-radius:12px;padding:9px;gap:5px!important}
+#cartogramMap > div{border-radius:7px!important;transition:box-shadow .18s,background .18s}
+#cartogramMap > div.bg-slate-100{background:#161B23!important;border-color:#232B37!important;color:#93A0B2!important}
+#cartogramMap > div.bg-indigo-200{background:rgba(255,107,94,.30)!important;border-color:rgba(255,107,94,.42)!important;color:#E8ECF2!important}
+#cartogramMap > div.cg-top8{background:rgba(255,107,94,.52)!important;border-color:rgba(255,107,94,.64)!important;
+  color:#fff!important;box-shadow:0 0 16px rgba(255,107,94,.20)}
+#cartogramMap > div.bg-indigo-600{background:rgba(255,107,94,.84)!important;border-color:#FF6B5E!important;
+  color:#fff!important;box-shadow:0 0 24px rgba(255,107,94,.36)}
+#cartogramMap > div[aria-pressed="true"]{outline:2px solid #E8ECF2;outline-offset:1px}
+
+/* ── ⑦ 휴대폰 우선 ─────────────────────────────────── */
+@media (max-width:900px){
+  #v2Stage{grid-template-columns:minmax(0,1fr);gap:14px}
+  #v2Right{position:static}
+  #heroV2 video{display:none}
+  #heroV2 .v2-media{background-position:72% center}
+  #heroV2 .v2-scrim{background:linear-gradient(180deg,rgba(20,24,31,.90) 0%,rgba(20,24,31,.72) 46%,rgba(20,24,31,.55) 100%)}
+  #heroV2 .v2-in{padding:26px 16px 22px}
+  .v2-chip{padding:6px 10px;gap:5px;flex-direction:column;align-items:flex-start}
+  .v2-chip .lab{font-size:9.5px}
+  .v2-chip b{font-size:13px}
+  #cartogramMap{gap:3px!important;padding:6px}
+}
+@media (prefers-reduced-motion:reduce){#heroV2 video{display:none}}
+</style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen p-4">
 
@@ -297,7 +447,7 @@ input[type=range]{background:transparent}
 
 <!-- 제목 줄 + 화면 전환. 토글 버튼 묶음은 JS(setViewMode/setGranularity)가
      className 을 통째로 덮어쓰므로 원본 유틸리티 클래스를 유지한다(색은 CSS 재정의). -->
-<div class="max-w-6xl mx-auto mt-4 mb-5 flex flex-wrap items-end justify-between gap-3">
+<div id="v2TitleRow" class="max-w-6xl mx-auto mt-4 mb-5 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="bd-kicker">서울 25개 자치구 · 매주 갱신</p>
     <h1 class="bd-title">서울시 25개구 주택 거래량 대시보드</h1>
@@ -315,7 +465,51 @@ input[type=range]{background:transparent}
   </div>
 </div>
 
+
+<!-- ① 헤드라인 — 결론 한 줄. 배경은 사이트와 같은 서울 야경(assets/). -->
+<section id="heroV2">
+  <div class="v2-media" aria-hidden="true"></div>
+  <video autoplay loop muted playsinline preload="metadata" poster="assets/hero-seoul.jpg" aria-hidden="true" tabindex="-1">
+    <source src="assets/hero-seoul.mp4" type="video/mp4">
+  </video>
+  <div class="v2-scrim" aria-hidden="true"></div>
+  <div class="v2-in">
+    <p id="v2Kicker">—</p>
+    <h1 id="v2Headline">—</h1>
+    <p id="v2Sub">—</p>
+    <div class="v2-chips">
+      <div class="v2-chip"><span class="lab">아파트</span><b id="v2ChipApt">—</b></div>
+      <div class="v2-chip"><span class="lab">비아파트</span><b id="v2ChipNon">—</b></div>
+      <div class="v2-chip"><span class="lab" id="v2ChipHighLab">신고가</span><b id="v2ChipHigh">—</b></div>
+    </div>
+  </div>
+</section>
+
 <div id="dashView">
+
+<!-- ②③ 지형도(왼쪽) + 상세 패널(오른쪽). 내용은 v2Move() 가 기존 노드를 옮겨 채운다. -->
+<div id="v2Stage">
+  <div id="v2Left"></div>
+  <aside id="v2Right" aria-label="선택한 구 상세">
+    <div class="v2-tabs" role="tablist">
+      <button class="v2-tab" id="v2Tab-week"  role="tab" aria-selected="true"  onclick="v2Tab('week')">이번 주</button>
+      <button class="v2-tab" id="v2Tab-trend" role="tab" aria-selected="false" onclick="v2Tab('trend')">거래추이</button>
+      <button class="v2-tab" id="v2Tab-room"  role="tab" aria-selected="false" onclick="v2Tab('room')">공간규격</button>
+      <button class="v2-tab" id="v2Tab-price" role="tab" aria-selected="false" onclick="v2Tab('price')">금액대</button>
+    </div>
+    <div class="v2-dhead">
+      <h2 id="v2PanelName">—<small id="v2PanelPeriod">—</small></h2>
+      <div class="v2-rank">서울 내 순위<b id="v2PanelRank">—</b><span id="v2PanelOf">/ 25개 구</span></div>
+    </div>
+    <div id="v2PaneWeek">
+      <p class="v2-sect" id="v2SparkLabel">최근 12기간 추이</p>
+      <div id="v2Spark"></div>
+      <p class="v2-note"><span class="v2-hatch" aria-hidden="true"></span><span id="v2SparkNote">—</span></p>
+    </div>
+    <div id="v2PaneChart" hidden></div>
+  </aside>
+</div>
+
 
 <!-- ─────────────────────────────────────────────
   2. KPI 카드 (선택 구 or 서울 전체)
@@ -395,7 +589,7 @@ input[type=range]{background:transparent}
 <section class="max-w-6xl mx-auto mb-4 bg-white shadow-sm border border-slate-200 rounded-xl p-4">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
     <p class="text-xs font-semibold text-slate-700">서울시 거래 활성도 지형도 <span class="text-slate-400 font-normal">(셀 클릭 또는 Enter/Space → 구 선택)</span></p>
-    <div class="flex gap-3 text-xs" aria-label="색상 범례">
+    <div id="v2Legend" class="flex gap-3 text-xs" aria-label="색상 범례">
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-600" aria-hidden="true"></span><span class="text-slate-600">TOP 3</span></span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded cg-top8 border border-indigo-500" aria-hidden="true"></span><span id="legendHigh" class="text-slate-600">상위 8구</span></span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded bg-indigo-200" aria-hidden="true"></span><span id="legendMid" class="text-slate-600">중위</span></span>
@@ -1007,7 +1201,7 @@ function renderKPI() {
     prov.classList.toggle('hidden', !inProvisional);
     if (inProvisional) {
       const unit = granularity === 'week' ? `${span}주` : `${span}개월`;
-      prov.innerHTML = `※ 최근 ${unit}은 신고 진행 중이라 <b>잠정치</b>입니다 (실제보다 낮게 표시).`;
+      prov.innerHTML = `※ 최근 ${unit}${josa(unit, '은/는')} 신고 진행 중이라 <b>잠정치</b>입니다 (실제보다 낮게 표시).`;
     }
   }
 }
@@ -1949,6 +2143,238 @@ function setViewMode(mode) {
   if (isReport) renderReport();
 }
 
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  2차 리뉴얼 — 덧붙이기 전용. 기존 함수·id 는 고치지 않는다.
+//  기존 노드를 새 골격으로 옮기고(v2Move), 헤드라인·상세 패널을
+//  새 함수로 그린다. 데이터는 지금 data.js 에 있는 것만 쓴다.
+// ══════════════════════════════════════════════════════════════
+(function () {
+  const $ = id => document.getElementById(id);
+  // renderKPI 안의 같은 상수와 값을 맞춰야 한다(거기 것을 고치지 않기로 했으므로 복제).
+  const PROV_SPAN = { month: 2, week: 4 };
+  const LS_KEY = 'bdDashV2';
+
+  // ── 골격으로 옮기기 (한 번만) ────────────────────────────
+  function v2Move() {
+    const left = $('v2Left'), paneChart = $('v2PaneChart'), paneWeek = $('v2PaneWeek');
+    const secOf = id => { const el = $(id); return el ? el.closest('section') : null; };
+    const mapSec = secOf('cartogramMap'), tlSec = secOf('timeSlider');
+    const kpiSec = secOf('kpiApt'), barSec = secOf('barChart'), chartSec = secOf('districtChart');
+    if (mapSec) left.appendChild(mapSec);
+    if (tlSec)  left.appendChild(tlSec);
+    // "이번 주" 탭 — 건수 카드 두 개가 맨 위, 그 아래 12기간 추이
+    if (kpiSec) paneWeek.insertBefore(kpiSec, paneWeek.firstChild);
+    // 차트 탭 — 분석 차트 + 25구 막대차트(거래추이 탭에서만 보인다)
+    if (chartSec) paneChart.appendChild(chartSec);
+    if (barSec)   { barSec.id = 'v2BarSection'; paneChart.appendChild(barSec); }
+    // ① 주간/월간/리포트 토글을 브랜드 헤더로 올린다. 제목 줄은 CSS 로 숨긴다.
+    const modeBtn = $('btnWeek');
+    if (modeBtn) {
+      const group = modeBtn.parentElement.parentElement;  // 흰 테두리 묶음의 바깥 div
+      group.id = 'v2Modes';
+      const bar = document.querySelector('header.bd-topbar');
+      if (bar) bar.appendChild(group);
+    }
+    // "서울 전체" 되돌리기 버튼은 패널 탭 줄로. 남은 "선택:" 라벨 줄은 지운다.
+    const seoul = $('btnSeoulAll');
+    if (seoul) {
+      const row = seoul.parentElement;
+      seoul.textContent = '전체 보기';           // ② 구를 골랐을 때만 보인다
+      document.querySelector('#v2Right .v2-tabs').appendChild(seoul);
+      if (row && !row.querySelector('button, select, input')) row.remove();
+    }
+  }
+
+  // ── ⑤ 사용법 안내 문구 제거 ──────────────────────────────
+  function v2Clean() {
+    const kill = [
+      '(셀 클릭 또는 Enter/Space → 구 선택)',
+      '바 클릭 → 구 선택',
+      '카토그램(공간) + 막대(수량) 상호 보완',
+      // ③ 집계 기준 각주 — 히어로 아래 회색 한 줄에 같은 내용이 이미 있다
+      '직거래 포함 · 취소된 계약 제외 · 최근 2개월만 재수집',
+    ];
+    document.querySelectorAll('#dashView span, #dashView p, #dashView small').forEach(el => {
+      if (el.children.length) return;
+      const t = (el.textContent || '').trim();
+      if (kill.some(k => t.includes(k))) el.remove();
+    });
+    // 패널 맨 아래 개발 메모 상자 — 시안에만 있던 것
+    const memo = $('v2Memo'); if (memo) memo.remove();
+  }
+
+  // ── 데이터 헬퍼 (data.js 안의 것만) ──────────────────────
+  function totalsFor(key, district) {
+    if (district === null || district === undefined) return dataProvider.getSeoulTotals(granularity, key);
+    const row = dataProvider.getDistrictTotals(granularity, key).find(r => r.district === district);
+    return row ? { apt: row.apt, nonApt: row.nonApt } : { apt: 0, nonApt: 0 };
+  }
+  function rankOf(district, key) {
+    const rows = [...dataProvider.getDistrictTotals(granularity, key)]
+      .sort((a, b) => (b.apt + b.nonApt) - (a.apt + a.nonApt));
+    const i = rows.findIndex(r => r.district === district);
+    return { rank: i < 0 ? null : i + 1, of: rows.length, top: rows[0] };
+  }
+  function pctText(cur, prev) {
+    if (prev === null || prev === undefined || prev === 0) return null;
+    const p = ((cur - prev) / prev) * 100;
+    const sign = p > 0 ? '+' : '−';
+    return { text: `${sign}${Math.abs(p).toFixed(1)}%`, cls: p < 0 ? 'dn' : 'up' };
+  }
+  function unitWord() { return granularity === 'week' ? '주' : '달'; }
+  function prevWord()  { return granularity === 'week' ? '전주' : '전월'; }
+
+  // ── ① 헤드라인 + KPI 칩 ─────────────────────────────────
+  function v2Hero() {
+    document.body.dataset.gran = granularity;
+    const key = periods[periodIndex];
+    const prevKey = periodIndex > 0 ? periods[periodIndex - 1] : null;
+    const cur = dataProvider.getSeoulTotals(granularity, key);
+    const prev = prevKey ? dataProvider.getSeoulTotals(granularity, prevKey) : null;
+    const d = prev ? pctText(cur.apt, prev.apt) : null;
+    const top = rankOf('__none__', key).top;
+
+    $('v2Kicker').textContent = formatPeriodLabel(key, granularity);
+    const line1 = `이번 ${unitWord()} 서울 아파트 <span class="hl-num">${cur.apt.toLocaleString()}</span>건`;
+    const rest = [];
+    if (d)   rest.push(`${prevWord()} 대비 <span class="hl-accent hl-num">${d.text}</span>`);
+    if (top) rest.push(`거래 1위 <span class="hl-accent">${top.district}</span>`);
+    $('v2Headline').innerHTML = line1 + (rest.length ? '<br>' + rest.join(' · ') : '');
+
+    const meta = (window.__DASHBOARD_DATA__ || {});
+    $('v2Sub').textContent = `데이터 수집일 ${meta.generatedAt || '—'} · 직거래 포함 · 취소된 계약 제외`;
+
+    $('v2ChipApt').innerHTML = `${cur.apt.toLocaleString()}건` +
+      (d ? ` <span class="${d.cls}">${d.text}</span>` : '');
+    $('v2ChipNon').textContent = `${cur.nonApt.toLocaleString()}건`;
+    // ③ "전기 대비" 자리를 신고가로 교체. data.js 의 report.apt.counts.high 가 원천이다.
+    // 이 값은 "최근 신고분" 기준이라 선택한 기간과 무관하다 — 라벨에 그대로 적는다.
+    const high = meta.report && meta.report.apt && meta.report.apt.counts
+      ? meta.report.apt.counts.high : null;
+    $('v2ChipHighLab').textContent = '최근 신고분 신고가';
+    $('v2ChipHigh').textContent = high === null ? '—' : `${high.toLocaleString()}건`;
+  }
+
+  // ── ③ 상세 패널 ─────────────────────────────────────────
+  function sparkSVG(series, provFrom) {
+    const W = 320, H = 62, pad = 4;
+    const max = Math.max(1, ...series.map(p => p.v));
+    const x = i => pad + (W - pad * 2) * (series.length < 2 ? 0.5 : i / (series.length - 1));
+    const y = v => H - pad - (H - pad * 2) * (v / max);
+    const pts = series.map((p, i) => `${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const hatch = provFrom < series.length
+      ? `<rect x="${x(provFrom).toFixed(1)}" y="0" width="${(W - x(provFrom)).toFixed(1)}" height="${H}" fill="url(#v2hatch)"></rect>` : '';
+    const last = series[series.length - 1];
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="최근 ${series.length}기간 거래량 추이">
+      <defs><pattern id="v2hatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+        <rect width="3" height="7" fill="rgba(154,164,181,.30)"></rect></pattern></defs>
+      ${hatch}
+      <polyline points="${pts}" fill="none" stroke="#FF6B5E" stroke-width="2.2" stroke-linejoin="round"></polyline>
+      <circle cx="${x(series.length - 1).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="3.2" fill="#FF6B5E"></circle>
+    </svg>`;
+  }
+
+  function v2Panel() {
+    const key = periods[periodIndex];
+    const name = selectedDistrict === null ? '서울 전체' : selectedDistrict;
+    $('v2PanelName').firstChild.nodeValue = name;
+    $('v2PanelPeriod').textContent = formatPeriodLabel(key, granularity);
+
+    const right = $('v2Right'), seoulBtn = $('btnSeoulAll');
+    right.dataset.scope = selectedDistrict === null ? 'seoul' : 'district';
+    if (seoulBtn) seoulBtn.style.display = selectedDistrict === null ? 'none' : '';
+    if (selectedDistrict === null) {
+      $('v2PanelRank').textContent = '—';
+      $('v2PanelOf').textContent = '25개 구 합계';
+    } else {
+      const r = rankOf(selectedDistrict, key);
+      $('v2PanelRank').textContent = r.rank ? `${r.rank}위` : '—';
+      $('v2PanelOf').textContent = `/ ${r.of}개 구`;
+    }
+
+    // 최근 12기간 추이 — 지금 데이터로 그때그때 집계한다
+    const start = Math.max(0, periodIndex - 11);
+    const series = periods.slice(start, periodIndex + 1).map(k => {
+      const t = totalsFor(k, selectedDistrict);
+      return { k, v: t.apt + t.nonApt };
+    });
+    const span = PROV_SPAN[granularity] ?? 1;
+    const provFrom = Math.max(0, series.length - Math.min(span, periods.length - (periods.length - span)));
+    const firstProvIdx = series.findIndex((p, i) => (start + i) >= periods.length - span);
+    $('v2Spark').innerHTML = sparkSVG(series, firstProvIdx < 0 ? series.length : firstProvIdx);
+    const unitLabel = granularity === 'week' ? '주' : '개월';
+    $('v2SparkLabel').textContent = `최근 ${series.length}${unitLabel} 추이`;
+    $('v2SparkNote').textContent = granularity === 'week'
+      ? `빗금 ${span}주는 신고가 들어오는 중이라 낮게 보인다`
+      : `빗금 ${span}개월은 신고가 들어오는 중이라 낮게 보인다`;
+  }
+
+  // ── 탭 ──────────────────────────────────────────────────
+  let v2CurrentTab = 'week';
+  window.v2Tab = function (t) {
+    v2CurrentTab = t;
+    ['week', 'trend', 'room', 'price'].forEach(k => {
+      const b = $('v2Tab-' + k);
+      if (b) b.setAttribute('aria-selected', k === t ? 'true' : 'false');
+    });
+    $('v2PaneWeek').hidden = t !== 'week';
+    $('v2PaneChart').hidden = t === 'week';
+    const bar = $('v2BarSection');
+    if (bar) bar.hidden = t !== 'trend';           // ⑤ 25구 막대차트는 거래추이 탭 안에서만
+    if (t !== 'week') switchChartMode(t);           // 기존 함수를 그대로 부른다
+    v2Remember();
+  };
+
+  // ── ⑦ 주소 해시 + 기기 기억 ─────────────────────────────
+  function validDistrict(name) {
+    if (!name) return null;
+    const rows = dataProvider.getDistrictTotals(granularity, periods[periodIndex]);
+    return rows.some(r => r.district === name) ? name : null;
+  }
+  function v2Remember() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({ d: selectedDistrict, t: v2CurrentTab }));
+    } catch (e) { /* file:// 이나 사생활 보호 창에서는 저장이 막힌다 — 무시한다 */ }
+  }
+  function v2SyncHash() {
+    const h = selectedDistrict ? '#' + encodeURIComponent(selectedDistrict) : ' ';
+    try { history.replaceState(null, '', h === ' ' ? location.pathname + location.search : h); } catch (e) {}
+  }
+  function v2Restore() {
+    let d = null, t = 'week';
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+      if (saved && typeof saved === 'object') { d = saved.d || null; t = saved.t || 'week'; }
+    } catch (e) {}
+    // 주소 해시가 기억보다 우선한다 — 즐겨찾기로 자기 구를 여는 길이다
+    const fromHash = validDistrict(decodeURIComponent((location.hash || '').replace(/^#/, '')));
+    // 해시 > 기억 > 이번 기간 거래 1위 구. 빈 화면(서울 전체)으로 시작하지 않는다.
+    const topDistrict = rankOf('__none__', periods[periodIndex]).top;
+    const target = fromHash || validDistrict(d) || (topDistrict ? topDistrict.district : null);
+    if (target) selectDistrict(target);
+    if (['week', 'trend', 'room', 'price'].includes(t)) window.v2Tab(t);
+  }
+
+  // ── 기존 함수 감싸기 (내용은 그대로 두고 뒤에 덧붙인다) ──
+  const _renderAll = renderAll;
+  renderAll = function () { _renderAll.apply(this, arguments); v2Hero(); v2Panel(); };
+  const _selectDistrict = selectDistrict;
+  selectDistrict = function (d) { _selectDistrict.apply(this, arguments); v2Remember(); v2SyncHash(); };
+
+  window.addEventListener('hashchange', function () {
+    const d = validDistrict(decodeURIComponent((location.hash || '').replace(/^#/, '')));
+    if (d !== selectedDistrict) selectDistrict(d);
+  });
+
+  v2Move();
+  v2Clean();
+  v2Hero();
+  v2Panel();
+  v2Restore();
+})();
 </script>
 </body>
 </html>

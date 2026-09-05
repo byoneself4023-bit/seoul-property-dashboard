@@ -48,6 +48,78 @@ classify_copy() {
   echo create
 }
 
+# ── 삭제 판정 ──────────────────────────
+# 예전에는 rm 이 보이면 무조건 물었다. 세션이 만든 임시 스크립트를 치우는 것까지
+# 승인을 받게 되어 승인만 잦아지고 정작 위험한 삭제에 무뎌졌다.
+# 이제는 되돌릴 수 없는 것만 묻는다: git 추적 파일과 산출물·캐시.
+
+# 지워도 되는 임시물인가? (스크래치패드·/tmp·dashboard/ 바로 아래 점파일)
+is_temp_target() {
+  _t="$1"
+  case "$_t" in "~"/*) _t="$HOME/${_t#~/}" ;; esac
+  case "$_t" in
+    /tmp/*|/private/tmp/*|/var/folders/*) return 0 ;;
+  esac
+  # dashboard/.shot-wf.mjs 처럼 폴더 바로 아래 점으로 시작하는 파일.
+  # .cache 와 .env 는 제외한다 — 되돌리기가 비싸거나 비밀값이다.
+  case "$_t" in
+    dashboard/.*|./dashboard/.*|*/dashboard/.*)
+      _b=${_t##*/}
+      case "$_b" in .cache|.env|.env.*) return 1 ;; esac
+      case "$_b" in .?*) return 0 ;; esac
+      ;;
+  esac
+  return 1
+}
+
+# git 이 추적 중인가? 한글 파일명 때문에 quotepath 를 끈다(CLAUDE.md 규칙).
+is_tracked() {
+  ( cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 1
+    git -c core.quotepath=false ls-files --error-unmatch -- "$1" >/dev/null 2>&1 )
+}
+
+# 삭제 명령을 판정한다. 통과면 아무것도 출력하지 않고, 물어야 하면 이유를 낸다.
+classify_delete() {
+  _cmd="$1"
+  _norm=$(printf '%s' "$_cmd" | tr '\n' ';' | sed 's/&&/;/g; s/||/;/g; s/|/;/g; s/&/;/g')
+  _old_ifs=$IFS
+  IFS=';'
+  for _seg in $_norm; do
+    IFS=$_old_ifs
+    _seg=$(printf '%s' "$_seg" | sed 's/^[[:space:]]*//')
+    case "$_seg" in
+      rm|rm\ *|rmdir|rmdir\ *|trash|trash\ *|shred|shred\ *|*/rm\ *|*/rmdir\ *) ;;
+      *) IFS=';' ; continue ;;
+    esac
+    # 따옴표·글롭·변수가 섞이면 낱말 분해를 믿을 수 없다 — 그때는 물어본다.
+    # 위험 문자를 소스에 직접 적으면 이 파일의 인용이 깨진다(실제로 깨뜨렸다).
+    # 8진 이스케이프로 만든다: ' " ` $ * ? [
+    _meta=$(printf '\47\42\140\44\52\77\133')
+    case "$_seg" in
+      *[$_meta]*)
+        printf '%s' "대상을 확신할 수 없습니다(따옴표·글롭·변수): $_seg"; IFS=$_old_ifs; return ;;
+    esac
+    # shellcheck disable=SC2086
+    set -- $_seg
+    shift
+    _n=0
+    for _a in "$@"; do
+      case "$_a" in -*|--) continue ;; esac
+      _n=$((_n+1))
+      if is_tracked "$_a"; then
+        printf '%s' "git 이 추적 중인 파일입니다: $_a"; IFS=$_old_ifs; return
+      fi
+      case "$_a" in
+        *dashboard/data.js|*dashboard/dashboard.html|*dashboard/.cache*|*dashboard/reports*|*dashboard/assets*)
+          printf '%s' "산출물·캐시입니다: $_a"; IFS=$_old_ifs; return ;;
+      esac
+      is_temp_target "$_a" || { printf '%s' "임시물이 아닙니다: $_a"; IFS=$_old_ifs; return; }
+    done
+    [ "$_n" -gt 0 ] || { printf '%s' "삭제 대상을 찾지 못했습니다: $_seg"; IFS=$_old_ifs; return; }
+    IFS=';'
+  done
+  IFS=$_old_ifs
+}
 if [ "$TOOL" = "Bash" ]; then
   CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""')
 
@@ -55,9 +127,11 @@ if [ "$TOOL" = "Bash" ]; then
   printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])(rm|trash|shred)([[:space:]]|$).*($PRECIOUS)" \
     && deny "차단: .cache/ingest 는 이 맥에만 있는 원본 45만 건입니다. 지우면 5,500회 재수집이 필요합니다. 정말 필요하면 사람이 직접 실행하세요."
 
-  # 2. 삭제 일반
-  printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])(rm|rmdir|trash|shred)([[:space:]]|$)" \
-    && ask "삭제 명령입니다. 대상을 확인하세요: $CMD"
+  # 2. 삭제 — 임시물은 통과, 되돌리기 비싼 것만 확인
+  if printf '%s' "$CMD" | grep -qE "(^|[;&|[:space:]])(rm|rmdir|trash|shred)([[:space:]]|$)"; then
+    DEL_REASON=$(classify_delete "$CMD")
+    [ -n "$DEL_REASON" ] && ask "삭제 명령입니다 — $DEL_REASON"
+  fi
 
   # 3. force push / 이력 파괴
   printf '%s' "$CMD" | grep -qE 'git[[:space:]]+push.*(--force|-f([[:space:]]|$))' \
