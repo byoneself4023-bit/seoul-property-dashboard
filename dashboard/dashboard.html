@@ -370,7 +370,13 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
 #timeSlider::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:#2A323E}
 #timeSlider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:20px;height:20px;margin-top:-8px;
   border-radius:999px;background:#E8ECF2;border:3px solid var(--bd-coral);box-shadow:0 2px 8px rgba(0,0,0,.5)}
-/* ══ 감사 판정 반영 (dashboard/research/대시보드-기능-전수감사.md, 2026-09-05) ══
+/* ══════════════════════════════════════════════════════════════
+   감사 판정 반영 — 2026-09-05 대표 확인 전까지 통째로 꺼 둔다.
+   다시 켜려면 이 주석의 여는 줄과 닫는 줄 두 개만 지우면 된다.
+   (블록 안의 주석 기호는 (* *) 로 바꿔 뒀다 — 통째 주석이 일찍 닫히지 않게.)
+   원본은 dashboard/research/대시보드-기능-전수감사.md
+
+(* ══ 감사 판정 반영 (dashboard/research/대시보드-기능-전수감사.md, 2026-09-05) ══
    지우지 않고 화면에서만 뺀다. 기존 JS 가 값을 쓰는 요소라 DOM 에서 없애면
    렌더가 null 참조로 죽는다. 되돌리려면 이 블록에서 해당 줄만 지우면 된다.
    #12 기간 라벨      — 헤드라인 키커와 완전 중복
@@ -382,7 +388,7 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
    #11 상위 5개 구    — 순위 한 줄로 합침(패널 머리에 "1위 OO구")
    #25/#27/#28 차트   — 추이 스파크라인과 물건 구성 한 줄로 합침
    #29 차트 각주      — 물건 구성 한 줄 괄호로 합침
-   #10 범례          — "밝을수록 거래 많음" 한 줄로 바꿈 */
+   #10 범례          — "밝을수록 거래 많음" 한 줄로 바꿈 *)
 #periodLabel,
 #yearFilterRow, #rangeRow,
 #v2BarSection,
@@ -391,8 +397,10 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
 #top5List, #v2Top5Col,
 #v2Legend,
 #chartNote{display:none!important}
-/* 분석 차트 묶음(#districtChart 를 감싼 섹션) 전체 — 캔버스는 살아 있고 화면에서만 빠진다 */
+(* 분석 차트 묶음(#districtChart 를 감싼 섹션) 전체 — 캔버스는 살아 있고 화면에서만 빠진다 *)
 #v2PaneChart > section:has(#districtChart){display:none!important}
+
+   ══════════════════════════════════════════════════════════════ */
 
 /* 휴대폰 타임라인 — 이전·다음·슬라이더·재생을 한 줄에 넣는다.
    버튼 글자는 지우고 화살표만 남긴다(font-size:0 + ::before). aria-label 은 그대로라
@@ -428,11 +436,16 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
   .bd-topbar #v2Modes{margin-left:0;width:100%}
   .bd-topbar #v2Modes > div{width:100%;justify-content:center}
 }
-/* ── ③ 패널 안 빨간 잠정 문장은 없앤다(차트 아래 빗금 한 줄로 대체) ── */
-#kpiProvisional{display:none!important}
-/* 휴대폰 범례 칩 규칙은 감사 #10(범례 → "밝을수록 거래가 많습니다" 한 줄)으로 걷어냈다.
-   범례를 되살리려면 위 숨김 목록에서 #v2Legend 를 지우고 아래 규칙을 되살린다.
-   @media (max-width:900px){ #v2Legend{display:flex!important;flex-wrap:nowrap!important;…} } */
+/* ── ③ 패널 안 잠정 문장 — 대표 확인 전까지 되살려 둔다(2026-09-05).
+   다시 숨기려면 아래 한 줄의 주석을 풀면 된다.
+   #kpiProvisional{display:none!important} */
+/* 휴대폰 범례 — 한 줄 칩 네 개. 감사 때 걷어냈다가 되살렸다(2026-09-05). */
+@media (max-width:900px){
+  #v2Legend{display:flex!important;flex-wrap:nowrap!important;gap:5px!important;width:100%}
+  #v2Legend > span{flex:1 1 0;min-width:0;justify-content:center;
+    background:#161B23;border:1px solid #262E3A;border-radius:999px;padding:4px 6px;font-size:9.5px}
+  #v2Legend > span > span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 /* 서울 전체일 때는 순위 칸을 숨긴다 */
 #v2Right[data-scope="seoul"] .v2-rank{display:none}
 /* 주간 모드에서 못 쓰는 컨트롤은 아예 숨긴다("사용 불가" 문구를 남기지 않는다) */
@@ -533,10 +546,11 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
   <div id="v2Left"></div>
   <aside id="v2Right" aria-label="선택한 구 상세">
     <div class="v2-tabs" role="tablist">
-      <!-- 감사 #18: 탭 4개 → 2개. 공간규격·금액대는 "이번 주"의 물건 구성 한 줄로,
-           거래추이 차트는 추이 스파크라인으로 합쳤다. -->
+      <!-- 감사 #18 은 탭 2개를 제안했으나 대표 확인 전까지 4개로 되돌려 뒀다(2026-09-05). -->
       <button class="v2-tab" id="v2Tab-week"  role="tab" aria-selected="true"  onclick="v2Tab('week')">이번 주</button>
-      <button class="v2-tab" id="v2Tab-trend" role="tab" aria-selected="false" onclick="v2Tab('trend')">추이</button>
+      <button class="v2-tab" id="v2Tab-trend" role="tab" aria-selected="false" onclick="v2Tab('trend')">거래추이</button>
+      <button class="v2-tab" id="v2Tab-room"  role="tab" aria-selected="false" onclick="v2Tab('room')">공간규격</button>
+      <button class="v2-tab" id="v2Tab-price" role="tab" aria-selected="false" onclick="v2Tab('price')">금액대</button>
     </div>
     <div class="v2-dhead">
       <h2 id="v2PanelName">—<small id="v2PanelPeriod">—</small></h2>
@@ -545,10 +559,8 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
     <div id="v2PaneWeek">
       <!-- 직거래·취소 신호. 값이 없으면(수집 전 기간) v2Signals 가 줄을 통째로 숨긴다. -->
       <div class="v2-line" id="v2Signals" hidden></div>
-      <!-- 물건 구성 — 감사 #27·#28·#29 를 한 줄로 합친 자리 -->
+      <!-- 물건 구성 한 줄 — 감사 때 만든 것. 차트를 되살린 뒤에도 남겨 뒀다(겹치면 이 줄을 지우면 된다). -->
       <div class="v2-line" id="v2Mix" hidden></div>
-    </div>
-    <div id="v2PaneTrend" hidden>
       <p class="v2-sect" id="v2SparkLabel">최근 12기간 추이</p>
       <div id="v2Spark"></div>
       <p class="v2-note"><span class="v2-hatch" aria-hidden="true"></span><span id="v2SparkNote">—</span></p>
@@ -2419,18 +2431,21 @@ function setViewMode(mode) {
   }
 
   // ── 탭 ──────────────────────────────────────────────────
-  // 감사 #18 — 탭 둘만 남는다. 기존 switchChartMode·차트 캔버스는 그대로 살아 있고
-  // 화면에서만 빠졌다(CSS). 되돌리려면 CSS 의 숨김 목록에서 해당 줄을 지우면 된다.
+  // 탭 4개(이번 주 · 거래추이 · 공간규격 · 금액대). 감사 #18 은 2개를 제안했으나
+  // 대표 확인 전까지 되돌려 뒀다(2026-09-05).
   let v2CurrentTab = 'week';
   window.v2Tab = function (t) {
-    if (t !== 'week' && t !== 'trend') t = 'week';
+    if (!['week', 'trend', 'room', 'price'].includes(t)) t = 'week';
     v2CurrentTab = t;
-    ['week', 'trend'].forEach(k => {
+    ['week', 'trend', 'room', 'price'].forEach(k => {
       const b = $('v2Tab-' + k);
       if (b) b.setAttribute('aria-selected', k === t ? 'true' : 'false');
     });
     $('v2PaneWeek').hidden  = t !== 'week';
-    $('v2PaneTrend').hidden = t !== 'trend';
+    $('v2PaneChart').hidden = t === 'week';
+    const bar = $('v2BarSection');
+    if (bar) bar.hidden = t !== 'trend';    // 25구 막대차트는 거래추이 탭에서만
+    if (t !== 'week') switchChartMode(t);    // 기존 함수를 그대로 부른다
     v2Remember();
   };
 
