@@ -2,7 +2,14 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 파비콘 — 사이트(barun-realestate-site)와 같은 마크. assets/ 는 pages.yml 이
+     _site/assets/ 로 함께 조립한다. 링크를 명시해 두면 브라우저가 도메인 루트의
+     /favicon.ico 를 자동으로 찾지 않아 404 도 사라진다.
+     apple-touch-icon 은 사이트와 마찬가지로 favicon.png 를 재사용한다. -->
+<link rel="icon" href="assets/favicon.ico" sizes="48x48">
+<link rel="icon" href="assets/favicon.png" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="assets/favicon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>서울 부동산 거래량 대시보드</title>
   <!-- 라이브러리는 인라인(CDN 의존 없음): Tailwind(정적 빌드) + Chart.js v4.5.1.
        데이터는 data.js 로 분리되어 있다(2026-08-12) — 이 파일 하나만으로는 목데이터로 뜬다. -->
