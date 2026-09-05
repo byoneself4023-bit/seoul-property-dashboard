@@ -448,22 +448,37 @@ function cancelPairKey(it) {
  * 본체 집계(aggregateItems)와 리포트(reportRows)가 이 함수 하나를 같이 쓴다.
  */
 export function removeCancelledPairs(items) {
+  return splitCancelledPairs(items).kept;
+}
+
+/**
+ * 위와 같은 판정을 하되 걷어낸 행도 함께 돌려준다.
+ * 취소 건수를 화면에 세워야 해서(2026-09-05) 버리던 것을 세게 됐다.
+ * removeCancelledPairs 는 이 함수의 kept 만 쓴다 — 동작은 전과 같다.
+ *
+ * @returns {{ kept: object[], removed: object[], cancelledRows: object[] }}
+ *   cancelledRows 는 해제 행(cdealType='O')만 모은 것이다. 취소된 계약 하나가
+ *   정상 행 + 해제 행 두 줄로 오므로, **계약 수는 해제 행 수**로 센다.
+ */
+export function splitCancelledPairs(items) {
   const cancels = new Map();
   for (const it of items) {
     if (it.cdealType !== 'O') continue;
     const k = cancelPairKey(it);
     cancels.set(k, (cancels.get(k) ?? 0) + 1);
   }
-  if (cancels.size === 0) return items;
+  const cancelledRows = items.filter(it => it.cdealType === 'O');
+  if (cancels.size === 0) return { kept: items, removed: [], cancelledRows };
   const out = [];
+  const removed = [];
   for (const it of items) {
-    if (it.cdealType === 'O') continue;
+    if (it.cdealType === 'O') { removed.push(it); continue; }
     const k = cancelPairKey(it);
     const left = cancels.get(k) ?? 0;
-    if (left > 0) { cancels.set(k, left - 1); continue; }
+    if (left > 0) { cancels.set(k, left - 1); removed.push(it); continue; }
     out.push(it);
   }
-  return out;
+  return { kept: out, removed, cancelledRows };
 }
 
 /**
@@ -520,10 +535,43 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
     return 'over6';
   }
 
+  // 직거래·취소 신호 (2026-09-05). 감사 문서가 "이번 주" 탭에 한 줄로 세우기로 한 값이다.
+  //   direct    = dealingGbn 이 '직거래' 인 거래 수(취소분 제외한 실거래 기준)
+  //   cancelled = 취소된 **계약 수**. 해제 행 하나가 계약 하나다(정상 행 + 해제 행 두 줄로 온다).
+  // 캐시는 이미 두 필드를 담고 있어(스키마 v3) 재수집이 필요 없다.
+  const monthDirect    = new Array(n).fill(0);
+  const weekDirect     = new Array(w).fill(0);
+  const monthCancelled = new Array(n).fill(0);
+  const weekCancelled  = new Array(w).fill(0);
+
+  // 기간 인덱스 찾기 — 아래 본 집계와 같은 규칙을 쓴다(월: 계약월, 주: 계약일이 있는 주)
+  function idxOf(it) {
+    const ym = `${it.year}-${String(it.month).padStart(2, '0')}`;
+    const mIdx = monthPeriods.indexOf(ym);
+    let wIdx = -1;
+    if (it.day !== null && it.day !== undefined) {
+      const ds = `${it.year}-${String(it.month).padStart(2,'0')}-${String(it.day).padStart(2,'0')}`;
+      wIdx = weekRanges.findIndex(r => ds >= r.monStr && ds <= r.sunStr);
+    }
+    return { mIdx, wIdx };
+  }
+
   // 취소된 계약(해제 행 + 그 짝인 정상 행)을 집계 전에 걷어낸다 (2026-09-04 결정).
   // 이전에는 해제 거래도 그대로 포함했으나, 리포트와 기준이 갈라져 통일했다.
   // 직거래는 여기서도 리포트와 달리 **포함**한다 — 이번 결정의 범위 밖이다.
-  items = removeCancelledPairs(items);
+  const split = splitCancelledPairs(items);
+  for (const it of split.cancelledRows) {
+    const { mIdx, wIdx } = idxOf(it);
+    if (mIdx >= 0) monthCancelled[mIdx]++;
+    if (wIdx >= 0) weekCancelled[wIdx]++;
+  }
+  items = split.kept;
+  for (const it of items) {
+    if (it.dealingGbn !== '직거래') continue;
+    const { mIdx, wIdx } = idxOf(it);
+    if (mIdx >= 0) monthDirect[mIdx]++;
+    if (wIdx >= 0) weekDirect[wIdx]++;
+  }
 
   for (const item of items) {
     // 짝 제거 이후의 집계는 이 5개 필드만 읽는다. 나머지 식별 필드는 캐시 계층 전용.
@@ -575,6 +623,11 @@ export function aggregateItems(items, monthPeriods, weekPeriods) {
     weeklyArea:   weekArea,
     monthlyPrice: monthPrice,
     weeklyPrice:  weekPrice,
+    // 직거래·취소 신호 (2026-09-05)
+    monthlyDirect:    monthDirect,
+    weeklyDirect:     weekDirect,
+    monthlyCancelled: monthCancelled,
+    weeklyCancelled:  weekCancelled,
   };
 }
 
@@ -622,6 +675,9 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
           under6: rhAgg.monthlyPrice.under6[i] + shAgg.monthlyPrice.under6[i] + offiAgg.monthlyPrice.under6[i],
           over6:  rhAgg.monthlyPrice.over6[i]  + shAgg.monthlyPrice.over6[i]  + offiAgg.monthlyPrice.over6[i],
         },
+        // 직거래·취소 신호 — 4종 합산. 화면은 apt+nonApt 대비 비율로 읽는다.
+        direct:    aptAgg.monthlyDirect[i]    + rhAgg.monthlyDirect[i]    + shAgg.monthlyDirect[i]    + offiAgg.monthlyDirect[i],
+        cancelled: aptAgg.monthlyCancelled[i] + rhAgg.monthlyCancelled[i] + shAgg.monthlyCancelled[i] + offiAgg.monthlyCancelled[i],
       })),
       week: weekPeriods.map((_, i) => ({
         apt:    aptAgg.weekly[i],
@@ -636,6 +692,8 @@ export function buildNormalized(rawByDistrict, monthPeriods, weekPeriods, genera
           under6: rhAgg.weeklyPrice.under6[i] + shAgg.weeklyPrice.under6[i] + offiAgg.weeklyPrice.under6[i],
           over6:  rhAgg.weeklyPrice.over6[i]  + shAgg.weeklyPrice.over6[i]  + offiAgg.weeklyPrice.over6[i],
         },
+        direct:    aptAgg.weeklyDirect[i]    + rhAgg.weeklyDirect[i]    + shAgg.weeklyDirect[i]    + offiAgg.weeklyDirect[i],
+        cancelled: aptAgg.weeklyCancelled[i] + rhAgg.weeklyCancelled[i] + shAgg.weeklyCancelled[i] + offiAgg.weeklyCancelled[i],
       })),
     };
   }
@@ -1759,6 +1817,28 @@ function runSelfTest() {
   const pairAgg = aggregateItems(pairItems, ['2026-06'], []);
   assert('aggregateItems 도 같은 짝 제거를 탄다 (3건 → 1건)', pairAgg.monthly[0] === 1,
     `실제: ${pairAgg.monthly[0]}`);
+
+  // 직거래·취소 신호 (2026-09-05). 화면 "이번 주" 탭 한 줄의 재료다.
+  // 취소는 **계약 수**라 해제 행 하나 = 1 이다(정상 행까지 2줄이 빠져도 1).
+  assert('취소 계약 수 = 1 (해제 행 하나)', pairAgg.monthlyCancelled[0] === 1,
+    `실제: ${pairAgg.monthlyCancelled[0]}`);
+  assert('직거래 수 = 0 (직거래 행은 취소돼 빠졌다)', pairAgg.monthlyDirect[0] === 0,
+    `실제: ${pairAgg.monthlyDirect[0]}`);
+
+  const sigWeeks = ['2026-06-08~2026-06-14'];
+  const sigItems = [
+    { ...pairBase, jibun: '9-1', dealingGbn: '직거래' },                 // 살아남는 직거래
+    { ...pairBase, jibun: '9-2', dealingGbn: '중개거래' },               // 살아남는 중개거래
+    { ...pairBase, jibun: '9-3', dealingGbn: '중개거래' },               // 취소될 정상 행
+    { ...pairBase, jibun: '9-3', cdealType: 'O', dealingGbn: '중개거래' }, // 해제 행
+  ];
+  const sigAgg = aggregateItems(sigItems, ['2026-06'], sigWeeks);
+  assert('신호: 주간 건수 2 · 직거래 1 · 취소 1',
+    sigAgg.weekly[0] === 2 && sigAgg.weeklyDirect[0] === 1 && sigAgg.weeklyCancelled[0] === 1,
+    `실제: 건수 ${sigAgg.weekly[0]} 직거래 ${sigAgg.weeklyDirect[0]} 취소 ${sigAgg.weeklyCancelled[0]}`);
+  assert('신호: 월간도 같은 값',
+    sigAgg.monthly[0] === 2 && sigAgg.monthlyDirect[0] === 1 && sigAgg.monthlyCancelled[0] === 1,
+    `실제: 건수 ${sigAgg.monthly[0]} 직거래 ${sigAgg.monthlyDirect[0]} 취소 ${sigAgg.monthlyCancelled[0]}`);
 
   // parseTotalCount 검증
   assert('parseTotalCount APT = 6',
