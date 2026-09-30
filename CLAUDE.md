@@ -101,3 +101,8 @@ npm run verify                       # puppeteer UI 품질 게이트
   둔다 — 회사 사이트(`~/barun-realestate-site/index.html`)가 이 주소를 `<img>` 와
   다운로드 링크로 직접 걸고 있어 지우면 깨진 이미지가 뜬다. 그 주 산출물인지는
   `reports/latest/manifest.json` 의 `rebuildIncluded` 와 `date` 로 판정한다.
+- **④ 변경 판정의 기준선은 `manifest.json` 의 `lastPublishedRebuildSignature` 다.**
+  직전 `data.js` 와 비교하면 안 된다 — 수집이 `changed:true` 인 `data.js` 를 먼저
+  커밋하고 그다음 `report.yml` 을 부르므로, 렌더가 실패하면 다음 수집이 같은 지문끼리
+  비교해 `changed:false` 가 되고 그 변경분이 영영 발행되지 못한다. 발행된 것만
+  기준선으로 올리면 실패한 회차가 다음 수집에서 자동으로 다시 잡힌다.
