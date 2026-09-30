@@ -1147,13 +1147,13 @@ export function buildReportMeta(deltaCount, deltaSince = null) {
     provisional: true,
     gapZero: '표시상 변동폭이 0.0억인 건 제외',
     pctNote: '상승률은 표시된 두 금액으로 계산',
-    trendNote: '계약월 기준 · 진행 중인 당월 제외 · 최근 2개월은 신고 지연으로 아직 차오르는 중(잠정)',
+    trendNote: `계약월 기준 · 진행 중인 당월 제외 · 신고 기한(${REPORT_LAG_DAYS}일)이 안 지난 기간은 아직 차오르는 중(잠정)`,
     // 출처는 블록마다 다르다. ①②③ 은 실거래, ④ 는 정비사업 고시다.
     // 둘을 한 문자열로 묶으면 네 장 모두에 해당 없는 출처가 하나씩 붙는다.
     sourceTrade: '국토교통부 RTMS 실거래가',
     sourceZone: '서울 열린데이터광장 정비사업 현황',
     lagNote: '신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다',
-    deltaLimit: '재수집 범위가 최근 2개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다',
+    deltaLimit: `재수집 범위가 최근 ${RECENT_REFETCH_MONTHS}개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다`,
   };
 }
 
@@ -1827,7 +1827,7 @@ function runSelfTest() {
     `실제: ${periods.monthPeriods[0]}`);
   assert('weekPeriods[11] = 2026-06-29~2026-07-05',
     periods.weekPeriods[11] === '2026-06-29~2026-07-05');
-  // 최근 2개월(신고 지연 → 캐시 무시 대상) = 직전월 + 당월
+  // 재수집 창(신고 지연 → 캐시 무시 대상) = 직전월들 + 당월
   assert('recentYmds 길이 = 3', periods.recentYmds.length === 3);
   assert('recentYmds = [202605, 202606, 202607]',
     periods.recentYmds.join(',') === '202605,202606,202607');
@@ -2353,7 +2353,7 @@ async function main() {
   console.log(`[ingest] 일일 한도: 10,000건 — 여유 있음\n`);
   console.log('[ingest] ⚠️  오피스텔 API는 별도 활용신청 필요 — 미신청 시 해당 유형만 건너뜁니다');
   if (useCache) {
-    console.log(`[ingest] 최근 2개월(${recentYmds.join(', ')})은 신고 지연 반영을 위해 캐시 무시하고 재수집`);
+    console.log(`[ingest] 최근 ${RECENT_REFETCH_MONTHS}개월(${recentYmds.join(', ')})은 신고 지연 반영을 위해 캐시 무시하고 재수집`);
   }
   console.log('');
 
@@ -2387,7 +2387,7 @@ async function main() {
     const results = await runPool(tasks, COMBO_WORKERS, async (t) => {
       // @MX:WARN: [AUTO] 일일 한도 초과 시 즉시 중단 — 재시도 없음
       // @MX:REASON: resultCode 22는 재시도해도 의미 없음. 캐시로 이어서 가능.
-      // 최근 2개월은 신고 지연 반영 위해 캐시 무시(재수집). cacheSave는 유지되어 스냅샷 갱신.
+      // 재수집 창의 달은 신고 지연 반영 위해 캐시 무시(재수집). cacheSave는 유지되어 스냅샷 갱신.
       const comboUseCache = useCache && !recentYmdSet.has(t.ym);
       const result = await fetchCombo(
         serviceKey, t.endpoint, t.district.code, t.ym, t.propType, comboUseCache, stats
