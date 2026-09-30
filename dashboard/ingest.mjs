@@ -89,6 +89,25 @@ const PRICE_BUCKETS = { under3Max: 30000, under6Max: 60000 };
 // 월간 집계 시작 (YYYYMM) — 연도 탐색을 위해 2022-01부터 수집
 const START_YM = '202201';
 
+// ── 신고 지연과 "확정" 판정 ────────────────────────
+//
+// 부동산거래신고법상 신고 기한은 계약일로부터 30일이다. 따라서 어떤 달의 거래가
+// 전부 들어왔다고 말할 수 있는 시점은 **그 달 말일 + 30일** 이후다. 이 값 하나가
+// 화면의 헤드라인·빗금·잠정 표시 전부의 근거다 — 여기 말고 다른 곳에서 정하지 않는다.
+const REPORT_LAG_DAYS = 30;
+
+// 캐시를 무시하고 매번 다시 받는 최근 개월 수.
+//
+// 2개월이었는데 그러면 **신고 기한이 끝나기 전에 재수집 창을 벗어나는 달**이 생긴다.
+// 실제로 그랬다: 8월 계약의 신고 기한은 9/30 인데 9월 마지막 수집이 9/28 이고,
+// 10월 수집부터는 창이 [9월, 10월] 이라 8월을 다시 받지 않는다 — 8월은 9/28 값
+// (3,115건)에서 영구히 멈춘다. 7월 4,982건과 나란히 놓으면 37% 낮은 가짜 급감이다.
+//
+// 3개월이면 달 M 은 M·M+1·M+2 수집에서 다시 받으므로, 창을 벗어나는 시점에는
+// 신고 기한(M 말일 +30일 ≈ M+1 말)이 이미 지나 있다. 즉 "창 밖 = 확정" 이 성립한다.
+// 비용은 회당 약 100회 증가다(4종 × 25구 = 100, 전체 5,700 대비 1.8%).
+const RECENT_REFETCH_MONTHS = 3;
+
 // ════════════════════════════════════════════════
 //  25개 서울 자치구 법정동코드
 // ════════════════════════════════════════════════
@@ -207,10 +226,92 @@ export function buildPeriods(runDate) {
     weekPeriods.push(`${fmtDate(mon)}~${fmtDate(sun)}`);
   }
 
-  // 최근 2개월(직전 완료월 + 당월)은 신고 지연으로 계속 갱신되므로 캐시 무시 대상
-  const recentYmds = dealYmdList.slice(-2);
+  // 최근 N개월은 신고 지연으로 계속 갱신되므로 캐시 무시 대상.
+  // N=3 인 이유는 RECENT_REFETCH_MONTHS 주석에 있다(창을 벗어날 때 신고 기한이 끝나 있게).
+  const recentYmds = dealYmdList.slice(-RECENT_REFETCH_MONTHS);
 
   return { dealYmdList, monthPeriods, weekPeriods, currentYM, currentWeekMon, recentYmds };
+}
+
+// ════════════════════════════════════════════════
+//  확정 / 신고 진행 중 판정 (순수 함수)
+//
+//  기준은 REPORT_LAG_DAYS 하나다. "기간 마지막 날 + 30일" 이 수집일보다 앞이면
+//  확정, 아니면 신고 진행 중이다. 화면의 헤드라인·빗금·잠정 문구는 전부
+//  여기서 계산한 값을 읽는다 — 화면이 자기 상수로 따로 정하면 규칙이 두 개가 된다.
+// ════════════════════════════════════════════════
+
+/** UTC 자정 기준 Date — 시:분 차이로 하루가 밀리는 것을 막는다. */
+function utcDay(y, m, d) { return new Date(Date.UTC(y, m, d)); }
+
+/** "YYYY-MM" 의 신고 기한 만료일 = 그 달 말일 + REPORT_LAG_DAYS. */
+export function monthDeadline(ym, lagDays = REPORT_LAG_DAYS) {
+  const y = parseInt(ym.slice(0, 4), 10);
+  const m = parseInt(ym.slice(5, 7), 10); // 1-based
+  const end = utcDay(y, m, 0);            // (m, day 0) = m-1 월의 말일
+  end.setUTCDate(end.getUTCDate() + lagDays);
+  return end;
+}
+
+/** "YYYY-MM-DD~YYYY-MM-DD" 의 신고 기한 만료일 = 끝나는 날 + REPORT_LAG_DAYS. */
+export function weekDeadline(key, lagDays = REPORT_LAG_DAYS) {
+  const [, to] = key.split('~');
+  const end = utcDay(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8, 10));
+  end.setUTCDate(end.getUTCDate() + lagDays);
+  return end;
+}
+
+/**
+ * 신고 기한이 지난 가장 최근 달. periods 는 오래된순.
+ * 없으면 null (데이터가 아주 짧을 때만 — 실제로는 2022-01 부터라 항상 존재한다).
+ */
+export function confirmedMonthOf(monthPeriods, runDate, lagDays = REPORT_LAG_DAYS) {
+  const now = utcDay(runDate.getFullYear(), runDate.getMonth(), runDate.getDate());
+  for (let i = monthPeriods.length - 1; i >= 0; i--) {
+    if (monthDeadline(monthPeriods[i], lagDays) < now) return monthPeriods[i];
+  }
+  return null;
+}
+
+/** 확정월 뒤에 남은 달 수 = 빗금으로 덮을 개월 수. */
+export function provisionalMonthCount(monthPeriods, runDate, lagDays = REPORT_LAG_DAYS) {
+  const c = confirmedMonthOf(monthPeriods, runDate, lagDays);
+  if (c === null) return monthPeriods.length;
+  return monthPeriods.length - 1 - monthPeriods.indexOf(c);
+}
+
+/** 신고 기한이 아직 안 지난 주의 개수 = 빗금으로 덮을 주 수. */
+export function provisionalWeekCount(weekPeriods, runDate, lagDays = REPORT_LAG_DAYS) {
+  const now = utcDay(runDate.getFullYear(), runDate.getMonth(), runDate.getDate());
+  let n = 0;
+  for (let i = weekPeriods.length - 1; i >= 0; i--) {
+    if (weekDeadline(weekPeriods[i], lagDays) < now) break;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * 화면이 읽는 확정 정보 한 덩어리. 문구도 여기서 만든다 —
+ * 상수를 바꾸면 화면 문구가 따라 바뀌므로 코드와 설명이 어긋날 수 없다.
+ */
+export function buildConfirmBlock(monthPeriods, weekPeriods, runDate) {
+  const month = confirmedMonthOf(monthPeriods, runDate);
+  const label = month
+    ? `${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월` : null;
+  return {
+    lagDays: REPORT_LAG_DAYS,
+    refetchMonths: RECENT_REFETCH_MONTHS,
+    month,
+    monthLabel: label,
+    monthIndex: month ? monthPeriods.indexOf(month) : -1,
+    provisionalMonths: provisionalMonthCount(monthPeriods, runDate),
+    provisionalWeeks: provisionalWeekCount(weekPeriods, runDate),
+    // 화면 한 줄로 그대로 나가는 문구
+    rule: `확정 기준 — 신고 기한(계약 후 ${REPORT_LAG_DAYS}일)이 지난 가장 최근 달${label ? ` = ${label}` : ''}`,
+    provisionalLabel: '신고 진행 중',
+    provisionalNote: `신고 기한이 아직 안 지난 기간은 실제보다 낮게 나온다`,
+  };
 }
 
 // ════════════════════════════════════════════════
@@ -942,12 +1043,11 @@ function rankCounts(rows) {
  * **마지막 달은 버린다.** 수집은 항상 진행 중인 당월을 포함하므로 마지막 버킷은
  * 언제나 부분값이다(실측: 2026-08 이 364건 — 다른 달의 8%). 그대로 그리면 폭락으로 읽힌다.
  *
- * **남은 마지막 두 달은 잠정으로 표시한다.** 재수집 범위가 최근 2개월이라 그 구간은
- * 아직 신고분이 차오르는 중이다. 표시가 없으면 미신고분이 거래 감소로 보인다.
+ * **신고 기한이 안 지난 달은 잠정으로 표시한다.** 몇 개인지는 상수가 아니라
+ * provisionalMonthCount() 가 REPORT_LAG_DAYS 로 계산한다 — 화면의 빗금·헤드라인과
+ * 같은 규칙을 쓰기 위해서다. 표시가 없으면 미신고분이 거래 감소로 보인다.
  */
-const REPORT_TREND_PROVISIONAL = 2;
-
-function buildTrend(series) {
+function buildTrend(series, provisionalMonths) {
   const counts = {};
   const all = new Set();
   for (const [key, rows] of Object.entries(series)) {
@@ -960,7 +1060,7 @@ function buildTrend(series) {
   }
   const months = [...all].sort();
   const dropped = months.pop() ?? null;   // 진행 중인 당월
-  const out = { months, dropped, provisional: Math.min(REPORT_TREND_PROVISIONAL, months.length) };
+  const out = { months, dropped, provisional: Math.min(provisionalMonths, months.length) };
   for (const key of Object.keys(series)) out[key] = months.map(m => counts[key][m] ?? 0);
   return out;
 }
@@ -1070,8 +1170,34 @@ export function readPrevGeneratedAt(jsPath = join(__dirname, 'data.js')) {
 }
 
 /**
+ * 직전 data.js 의 정비사업 지문. ④ 가 이번 주에 바뀌었는지 판정하는 기준선이다.
+ * 없으면 null — 첫 수집이거나 구버전 data.js 다.
+ */
+export function readPrevRebuildSignature(jsPath = join(__dirname, 'data.js')) {
+  try {
+    const src = readFileSync(jsPath, 'utf8');
+    const m = src.match(/"__DASHBOARD_DATA__"?\s*\]?\s*=\s*/); // 형태에 의존하지 않기 위해 JSON 만 뽑는다
+    const start = src.indexOf('{', m ? m.index : 0);
+    const json = src.slice(start, src.lastIndexOf('}') + 1);
+    const prev = JSON.parse(json);
+    return rebuildSignature(prev?.report?.rebuild ?? null);
+  } catch { return null; }
+}
+
+/**
+ * 정비사업 블록의 지문. 건수와 목록 맨 앞(최신) 항목을 합친다.
+ * 건수만 보면 "한 건 생기고 한 건 빠진" 경우를 놓치고, 목록만 보면 뒤쪽 변화를 놓친다.
+ */
+export function rebuildSignature(block) {
+  if (!block) return null;
+  const head = a => (a && a[0]) ? `${a[0].date ?? ''}|${a[0].name ?? ''}` : '';
+  return [block.counts?.news ?? 0, block.counts?.cancels ?? 0,
+          head(block.news), head(block.cancels)].join('::');
+}
+
+/**
  * 정비사업 캐시를 읽는다. 없으면 null — ④ 블록만 비고 나머지는 정상 동작한다.
- * 이 캐시는 gitignored 이고 수집 워크플로가 아직 없다(월 1회 수동 실행).
+ * 캐시는 git 추적 대상이고, ingest-rebuild.yml 이 월 1회 갱신한다.
  */
 export function loadRebuildCache() {
   const dir = join(__dirname, '.cache', 'rebuild');
@@ -1094,8 +1220,11 @@ export function loadRebuildCache() {
 /**
  * @param {Object} rawByDistrict
  * @param {Object|null} rebuild  { api, rebuildRows, announcementRows } 또는 null
+ * @param {string|null} deltaSince  직전 수집일
+ * @param {Object|null} confirm  buildConfirmBlock() 결과. 없으면 잠정 구간을 0으로 둔다
  */
-export function buildReport(rawByDistrict, rebuild, deltaSince = null) {
+export function buildReport(rawByDistrict, rebuild, deltaSince = null, confirm = null,
+                            prevRebuildSig = null) {
   const aptRows = reportRows(rawByDistrict, ['apt']);
   const rhRows  = reportRows(rawByDistrict, ['rh']);
   const offiRows = reportRows(rawByDistrict, ['offi']);
@@ -1133,10 +1262,22 @@ export function buildReport(rawByDistrict, rebuild, deltaSince = null) {
         highs: offi.highs.slice(0, 5), lows: offi.lows.slice(0, 5),
       },
     },
-    // ④ 정비사업
-    rebuild: buildRebuildBlock(rebuild),
-    // ⑤ 월별 거래량 추이 — ② 와 같은 모집단
-    trend: buildTrend({ apt: aptRows, rh: rhRows, offi: offiRows }),
+    // ④ 정비사업. changed 는 "직전 수집 대비 신규 지정·해제가 실제로 생겼는가" —
+    // 리포트 ⑤번 그림을 이번 주에 낼지 말지가 이 값 하나로 결정된다.
+    rebuild: (() => {
+      const block = buildRebuildBlock(rebuild);
+      if (!block) return null;
+      const sig = rebuildSignature(block);
+      block.signature = sig;
+      block.changed = prevRebuildSig === null ? false : sig !== prevRebuildSig;
+      return block;
+    })(),
+    // ⑤ 월별 거래량 추이 — ② 와 같은 모집단.
+    // 잠정 개월 수는 상수가 아니라 확정 규칙에서 온다(confirm.provisionalMonths).
+    trend: buildTrend({ apt: aptRows, rh: rhRows, offi: offiRows },
+                      confirm ? confirm.provisionalMonths : 0),
+    // 확정 / 신고 진행 중 판정. 화면의 헤드라인·빗금·잠정 문구가 전부 이걸 읽는다.
+    confirm,
   };
 }
 
@@ -1687,9 +1828,29 @@ function runSelfTest() {
   assert('weekPeriods[11] = 2026-06-29~2026-07-05',
     periods.weekPeriods[11] === '2026-06-29~2026-07-05');
   // 최근 2개월(신고 지연 → 캐시 무시 대상) = 직전월 + 당월
-  assert('recentYmds 길이 = 2', periods.recentYmds.length === 2);
-  assert('recentYmds = [202606, 202607]',
-    periods.recentYmds[0] === '202606' && periods.recentYmds[1] === '202607');
+  assert('recentYmds 길이 = 3', periods.recentYmds.length === 3);
+  assert('recentYmds = [202605, 202606, 202607]',
+    periods.recentYmds.join(',') === '202605,202606,202607');
+
+  // ── 확정 / 신고 진행 중 판정 ──
+  // runDate 는 2026-07-10. 신고 기한 30일 기준으로:
+  //   2026-06 → 6/30 + 30 = 7/30 > 7/10  → 아직 진행 중
+  //   2026-05 → 5/31 + 30 = 6/30 < 7/10  → 확정
+  const confirmT = buildConfirmBlock(periods.monthPeriods, periods.weekPeriods, runDate);
+  assert('확정월 = 2026-05', confirmT.month === '2026-05');
+  assert('확정월 라벨 = 2026년 5월', confirmT.monthLabel === '2026년 5월');
+  assert('잠정 개월 = 1 (2026-06)', confirmT.provisionalMonths === 1);
+  // 창이 보장해야 하는 것은 "창 밖 = 확정" 이다. 창을 막 벗어난 달(창의 바로 앞 달)이
+  // 이미 신고 기한을 넘겼는지 본다 — 이게 깨지면 미완성인 채로 얼어붙는 달이 생긴다.
+  const justLeft = periods.dealYmdList[periods.dealYmdList.length - RECENT_REFETCH_MONTHS - 1];
+  const justLeftKey = `${justLeft.slice(0, 4)}-${justLeft.slice(4, 6)}`;
+  assert(`창을 막 벗어난 달(${justLeftKey})은 신고 기한이 지났다`,
+    monthDeadline(justLeftKey) < new Date(Date.UTC(2026, 6, 10)));
+  assert('잠정 주 수 = 0~12 범위', confirmT.provisionalWeeks >= 0 && confirmT.provisionalWeeks <= 12);
+  // 마지막 주(2026-06-29~07-05)는 7/5 + 30 = 8/4 > 7/10 이라 반드시 진행 중이다
+  assert('마지막 주는 신고 진행 중', confirmT.provisionalWeeks >= 1);
+  assert('확정 규칙 문구에 30일과 확정월이 들어간다',
+    confirmT.rule.includes('30일') && confirmT.rule.includes('2026년 5월'));
 
   // ── 2. parseItems + parseTotalCount 검증 ────────
   console.log('\n[2] parseItems + parseTotalCount 검증');
@@ -2309,13 +2470,18 @@ async function main() {
 
   // 리포트는 기존 집계와 분리해서 붙인다 — buildNormalized 의 반환값을
   // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
-  normalized.report = buildReport(rawByDistrict, loadRebuildCache(), readPrevGeneratedAt());
+  const confirm = buildConfirmBlock(monthPeriods, weekPeriods, runDate);
+  // 지문은 data.js 를 덮어쓰기 **전에** 읽어야 한다.
+  const prevRebuildSig = readPrevRebuildSignature();
+  normalized.report = buildReport(
+    rawByDistrict, loadRebuildCache(), readPrevGeneratedAt(), confirm, prevRebuildSig);
   const rep = normalized.report;
   console.log(
     `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
     `           ① 아파트 신고가 ${rep.apt.counts.high} / 신저가 ${rep.apt.counts.low}\n` +
     `           ③ 연립다세대 신고가 ${rep.nonApt.rh.counts.high} / 오피스텔 ${rep.nonApt.offi.counts.high}\n` +
-    `           ④ 정비사업 ${rep.rebuild ? `신규 ${rep.rebuild.counts.news} / 해제 ${rep.rebuild.counts.cancels}` : '캐시 없음 — 건너뜀'}`
+    `           ④ 정비사업 ${rep.rebuild ? `신규 ${rep.rebuild.counts.news} / 해제 ${rep.rebuild.counts.cancels} — ${rep.rebuild.changed ? '변경 있음 → ⑤ 발행' : '변경 없음 → ⑤ 생략'}` : '캐시 없음 — 건너뜀'}\n` +
+    `           확정월 ${confirm.monthLabel ?? '없음'} · 잠정 ${confirm.provisionalMonths}개월 / ${confirm.provisionalWeeks}주`
   );
 
   console.log('[ingest] data.js 및 data.json 저장 중...');

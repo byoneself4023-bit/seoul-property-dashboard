@@ -212,7 +212,8 @@ data.json
 # 정비사업 캐시(~15MB, 51파일)도 2026-09-04 부터 추적한다. 원래는 "필요할 때
 # 다시 받으면 된다"고 제외했지만, 러너가 수집(ingest.mjs 의 loadRebuildCache)과
 # 리포트 PNG ⑤ 생성 양쪽에서 이 캐시를 읽게 되면서 러너와 로컬이 같은 캐시를
-# 봐야 하는 이유가 ingest 캐시와 같아졌다. 갱신은 월 1회 로컬 수집 후 커밋.
+# 봐야 하는 이유가 ingest 캐시와 같아졌다. 갱신은 ingest-rebuild.yml 이 월 1회 한다
+# (2026-09-30 이전에는 로컬 수동 수집이었다).
 !dashboard/.cache/rebuild/
 !dashboard/.cache/rebuild/**
 

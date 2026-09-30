@@ -1,16 +1,28 @@
-# 리포트 PNG 5장 — 러너에서 검증(verify-report) 통과분만 만들어 저장소에 쌓고 발행한다.
+# 리포트 PNG — 러너에서 검증(verify-report) 통과분만 만들어 저장소에 쌓고 발행한다.
 #
 # cron 이 없다. 매주는 ingest.yml 이 데이터 병합 뒤 이 워크플로를 호출하고,
 # 사람이 Actions 탭에서 수동 실행할 수도 있다(수집 없이 현재 데이터로 렌더).
 # 이 워크플로가 실패하면 발행(pages.yml)까지 가지 않는다 — 검증을 통과하지 못한
 # 그림도, 그와 어긋난 데이터도 라이브에 나가지 않는다.
 #
+# 장수는 고정이 아니다(2026-09-30).
+#   평소 주  : 4장 (01 신고가신저가 / 02 거래1위 / 03 비아파트 / 04 거래량추이)
+#   정비사업 : 05 는 **새 지정이나 해제가 실제로 생긴 수집에만** 붙는다.
+#              판정은 ingest.mjs 가 직전 data.js 와 대조해 report.rebuild.changed 에 남기고,
+#              render-report.mjs 가 그 값을 보고 렌더 여부를 정한다.
+#
 # 산출 구조 (dashboard/reports/, git 추적):
-#   reports/<수집일 YYYY-MM-DD>/01.png~05.png  — 날짜별 누적, 지난주 것은 지우지 않는다
-#   reports/latest/01.png~05.png               — 고정 경로, 매번 덮어쓴다
+#   reports/<수집일 YYYY-MM-DD>/01.png~0N.png  — 날짜별 누적, 지난주 것은 지우지 않는다
+#   reports/latest/01.png~05.png               — 고정 경로
+#   reports/latest/manifest.json               — 이번 발행에 무엇이 들어갔는지
+#
+# **05 가 없는 주에도 latest/05.png 를 지우지 않는다.** 회사 사이트가 이 주소를
+# <img> 와 다운로드 링크로 직접 걸고 있어(barun-realestate-site/index.html) 지우면
+# 그 주 내내 깨진 이미지가 뜬다. 대신 manifest.json 의 rebuildIncluded=false 와
+# date 로 "이번 주 것이 아니다"를 알린다.
+#
 # 파일명이 ASCII 번호인 이유: 외부 사이트(바른부동산)가 참조하는 URL 에
-# 한글 퍼센트 인코딩을 넣지 않기 위해서다. 01=신고가신저가 02=거래1위
-# 03=비아파트 04=거래량추이 05=정비사업.
+# 한글 퍼센트 인코딩을 넣지 않기 위해서다.
 name: 리포트 생성
 
 on:
@@ -60,19 +72,43 @@ jobs:
         id: stage
         run: |
           set -euo pipefail
-          DATE=$(grep -oE '"generatedAt"[[:space:]]*:[[:space:]]*"[0-9]{4}-[0-9]{2}-[0-9]{2}' \
-                   dashboard/data.js | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
-          [ -n "$DATE" ] || { echo "generatedAt 추출 실패 — data.js 확인"; exit 1; }
+          MANIFEST=dashboard/out/manifest.json
+          test -s "$MANIFEST" || { echo "manifest.json 이 없다 — 렌더가 끝나지 않았다"; exit 1; }
+          DATE=$(node -p "require('./$MANIFEST').date || ''")
+          [ -n "$DATE" ] || { echo "manifest 에 date 가 없다 — data.js 확인"; exit 1; }
+          REBUILD=$(node -p "require('./$MANIFEST').rebuildIncluded ? 'true' : 'false'")
+
           DEST="dashboard/reports/$DATE"
           mkdir -p "$DEST" dashboard/reports/latest
           cp "dashboard/out/매주/01-신고가신저가.png" "$DEST/01.png"
           cp "dashboard/out/매주/02-거래1위.png"      "$DEST/02.png"
           cp "dashboard/out/매주/03-비아파트.png"     "$DEST/03.png"
           cp "dashboard/out/매주/04-거래량추이.png"   "$DEST/04.png"
-          cp "dashboard/out/월간/정비사업.png"        "$DEST/05.png"
-          cp "$DEST"/01.png "$DEST"/02.png "$DEST"/03.png "$DEST"/04.png "$DEST"/05.png \
+          cp "$DEST"/01.png "$DEST"/02.png "$DEST"/03.png "$DEST"/04.png \
              dashboard/reports/latest/
-          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+          # ⑤ 는 새 지정·해제가 생겼을 때만 만들어진다.
+          # 없는 주에는 latest/05.png 를 **건드리지 않는다** — 위 헤더의 이유.
+          if [ "$REBUILD" = "true" ]; then
+            cp "dashboard/out/월간/정비사업.png" "$DEST/05.png"
+            cp "$DEST/05.png" dashboard/reports/latest/05.png
+            echo "⑤ 정비사업 포함 — $DEST/05.png 생성"
+          else
+            echo "⑤ 정비사업 미포함 — latest/05.png 는 직전 것을 그대로 둔다"
+          fi
+
+          cp "$MANIFEST" dashboard/reports/latest/manifest.json
+          cp "$MANIFEST" "$DEST/manifest.json"
+          echo "date=$DATE"       >> "$GITHUB_OUTPUT"
+          echo "rebuild=$REBUILD" >> "$GITHUB_OUTPUT"
+
+          # 뒤따르는 작업이 Actions 요약에서도 바로 읽을 수 있게 남긴다.
+          {
+            echo "### 리포트 발행 $DATE"
+            echo ""
+            echo "- 정비사업(05) 포함: **$REBUILD**"
+            echo "- manifest: \`https://\${GITHUB_REPOSITORY_OWNER}.github.io/\${GITHUB_REPOSITORY#*/}/reports/latest/manifest.json\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # main 은 ruleset 보호라 PR 로 들어간다 — ingest.yml 과 같은 경로.
       # 같은 날 재실행 등으로 PNG 가 바이트 단위까지 같으면 커밋 없이 발행만 부른다.
@@ -89,7 +125,7 @@ jobs:
             git config user.name  'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git checkout -b "$BRANCH"
-            git commit -m "report: PNG ${{ steps.stage.outputs.date }}" \
+            git commit -m "report: PNG ${{ steps.stage.outputs.date }} (정비사업 ${{ steps.stage.outputs.rebuild == 'true' && '포함' || '미포함' }})" \
                        -m "GitHub Actions 자동 생성 (실행 ${{ github.run_id }}). verify-report 통과분."
             git push origin "$BRANCH"
             gh pr create --base main --head "$BRANCH" \
