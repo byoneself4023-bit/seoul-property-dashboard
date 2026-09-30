@@ -52,7 +52,8 @@ async function render() {
   // ⑤ 정비사업을 이번에 낼지. 판정은 ingest.mjs 가 직전 data.js 와 대조해 남긴다.
   const rebuild = await page.evaluate(() => {
     const r = window.__DASHBOARD_DATA__?.report?.rebuild;
-    return r ? { changed: !!r.changed, news: r.counts?.news ?? 0, cancels: r.counts?.cancels ?? 0 } : null;
+    return r ? { changed: !!r.changed, news: r.counts?.news ?? 0, cancels: r.counts?.cancels ?? 0,
+                 signature: r.signature ?? null } : null;
   });
   const includeRebuild = !!(rebuild && rebuild.changed);
   const BLOCKS = includeRebuild ? [...WEEKLY_BLOCKS, REBUILD_BLOCK] : WEEKLY_BLOCKS;
@@ -87,17 +88,41 @@ async function render() {
   // 뒤따르는 작업(블로그 글·알림·쇼츠)이 "이번 주에 정비사업이 있었나"를
   // 사람 눈으로 세지 않고 이 파일 하나로 판정한다.
   const generatedAt = await readGeneratedAt();
+  // **다음 수집의 기준선.** "직전 data.js" 가 아니라 "마지막으로 05 를 실제로
+  // 발행했을 때의 지문" 을 남긴다. 직전 data.js 를 기준으로 삼으면, 수집이
+  // changed=true 인 data.js 를 커밋한 뒤 이 렌더가 실패했을 때 — 다음 수집이
+  // 같은 지문끼리 비교해 changed=false 가 되고 그 변경분은 영영 나가지 못한다.
+  // 발행된 것만 기준선으로 올리면 실패한 회차는 자동으로 다시 잡힌다.
+  //
+  // 05 를 내지 않은 회차는 직전 manifest 값을 그대로 이어받는다. 직전 manifest 가
+  // 없으면(이 기능이 처음 도는 회차) 지금 지문으로 씨를 뿌린다 — 그 시점의
+  // "변경 없음" 은 곧 지금 지문이 이미 발행돼 있다는 뜻이기 때문이다.
+  const prevManifest = readLatestManifest();
+  const curSig = rebuild ? rebuild.signature : null;
+  const lastPublishedRebuildSignature = includeRebuild
+    ? curSig
+    : (prevManifest?.lastPublishedRebuildSignature ?? curSig);
+
   const manifest = {
     date: generatedAt,
     rebuildIncluded: includeRebuild,
     rebuild: rebuild ? { news: rebuild.news, cancels: rebuild.cancels } : null,
     slots: saved.map(s => s.slot),
+    // ingest.mjs 의 readLastPublishedRebuildSignature() 가 읽는다. 사람이 보는 값이 아니다.
+    lastPublishedRebuildSignature,
     note: includeRebuild
       ? '05 는 이번 수집에서 신규 지정·해제가 생겨 새로 만든 것이다'
       : '05 는 이번 주 산출물이 아니다 — 직전에 만든 것이 그대로 남아 있다',
   };
   writeFileSync(join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   return { saved, errors, manifest };
+}
+
+/** 직전 발행의 manifest. 없으면 null (첫 발행이거나 구버전). */
+function readLatestManifest() {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, 'reports', 'latest', 'manifest.json'), 'utf8'));
+  } catch { return null; }
 }
 
 /** data.js 의 수집일. manifest 에 박아 두면 받는 쪽이 신선도를 스스로 판정한다. */

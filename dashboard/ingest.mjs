@@ -1196,6 +1196,35 @@ export function rebuildSignature(block) {
 }
 
 /**
+ * **④ 변경 판정의 기준선** — 마지막으로 리포트 ⑤ 를 실제로 발행했을 때의 지문.
+ * render-report.mjs 가 `reports/latest/manifest.json` 에 남긴다.
+ *
+ * 직전 data.js 를 기준으로 삼으면 안 되는 이유: 수집이 changed=true 인 data.js 를
+ * **먼저 커밋**하고 그다음 report.yml 을 부르므로, 렌더가 실패하면 다음 수집이
+ * 같은 지문끼리 비교해 changed=false 가 되고 그 변경분은 영영 발행되지 못한다.
+ * 발행된 것만 기준선으로 올리면 실패한 회차가 다음 수집에서 자동으로 다시 잡힌다.
+ *
+ * 없으면 null — 호출부가 직전 data.js 지문으로 물러선다(이 파일이 생기기 전 상태).
+ */
+export function readLastPublishedRebuildSignature(
+  manifestPath = join(__dirname, 'reports', 'latest', 'manifest.json')) {
+  try {
+    const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    return m.lastPublishedRebuildSignature ?? null;
+  } catch { return null; }
+}
+
+/**
+ * 기준선 하나를 고른다. manifest 가 있으면 그것이, 없으면 직전 data.js 가 기준이다.
+ * @returns {{sig: string|null, from: string}}
+ */
+export function pickRebuildBaseline(published, prevInJs) {
+  return published !== null
+    ? { sig: published, from: 'manifest(마지막 발행)' }
+    : { sig: prevInJs,  from: '직전 data.js(manifest 없음)' };
+}
+
+/**
  * 정비사업 캐시를 읽는다. 없으면 null — ④ 블록만 비고 나머지는 정상 동작한다.
  * 캐시는 git 추적 대상이고, ingest-rebuild.yml 이 월 1회 갱신한다.
  */
@@ -1852,6 +1881,32 @@ function runSelfTest() {
   assert('확정 규칙 문구에 30일과 확정월이 들어간다',
     confirmT.rule.includes('30일') && confirmT.rule.includes('2026년 5월'));
 
+  // ── ④ 변경 판정의 기준선 ──
+  // 여기서 지키려는 것은 "발행되지 않은 변경은 다음 수집에서 다시 잡힌다" 하나다.
+  const sigA = rebuildSignature({ counts: { news: 131, cancels: 33 },
+    news: [{ date: '2026-07-23', name: '미아동' }], cancels: [{ date: '2026-05-14', name: '광운대' }] });
+  const sigB = rebuildSignature({ counts: { news: 144, cancels: 33 },
+    news: [{ date: '2026-08-06', name: '오목교역' }], cancels: [{ date: '2026-05-14', name: '광운대' }] });
+  assert('지문은 건수·최신 항목이 다르면 달라진다', sigA !== sigB);
+  assert('지문은 같은 내용이면 같다', sigB === rebuildSignature({ counts: { news: 144, cancels: 33 },
+    news: [{ date: '2026-08-06', name: '오목교역' }], cancels: [{ date: '2026-05-14', name: '광운대' }] }));
+
+  assert('manifest 가 있으면 그것이 기준선',
+    pickRebuildBaseline(sigA, sigB).sig === sigA);
+  assert('manifest 가 없으면 직전 data.js 로 물러선다',
+    pickRebuildBaseline(null, sigB).sig === sigB);
+
+  // 핵심 시나리오: 수집이 sigB 를 커밋했지만 렌더가 실패해 05 가 안 나갔다.
+  // 마지막 발행 지문은 아직 sigA 다 → 다음 수집은 반드시 다시 changed=true 여야 한다.
+  const afterFailedRender = pickRebuildBaseline(/* manifest */ sigA, /* 직전 data.js */ sigB);
+  assert('렌더가 실패해도 다음 수집이 변경을 다시 잡는다(자기복구)',
+    afterFailedRender.sig !== sigB);
+  // 구 방식(직전 data.js 기준)이었다면 놓쳤다는 것을 같이 못박아 둔다
+  assert('구 방식이었다면 놓쳤을 것', pickRebuildBaseline(null, sigB).sig === sigB);
+
+  assert('없는 manifest 경로는 null 을 준다',
+    readLastPublishedRebuildSignature(join(__dirname, '없는-파일.json')) === null);
+
   // ── 2. parseItems + parseTotalCount 검증 ────────
   console.log('\n[2] parseItems + parseTotalCount 검증');
   const aptItems = parseItems(FIXTURE_XML_APT);
@@ -2472,16 +2527,18 @@ async function main() {
   // 바꾸지 않으므로 거래량 집계 구간은 그대로다.
   const confirm = buildConfirmBlock(monthPeriods, weekPeriods, runDate);
   // 지문은 data.js 를 덮어쓰기 **전에** 읽어야 한다.
-  const prevRebuildSig = readPrevRebuildSignature();
+  const baseline = pickRebuildBaseline(
+    readLastPublishedRebuildSignature(), readPrevRebuildSignature());
   normalized.report = buildReport(
-    rawByDistrict, loadRebuildCache(), readPrevGeneratedAt(), confirm, prevRebuildSig);
+    rawByDistrict, loadRebuildCache(), readPrevGeneratedAt(), confirm, baseline.sig);
   const rep = normalized.report;
   console.log(
     `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
     `           ① 아파트 신고가 ${rep.apt.counts.high} / 신저가 ${rep.apt.counts.low}\n` +
     `           ③ 연립다세대 신고가 ${rep.nonApt.rh.counts.high} / 오피스텔 ${rep.nonApt.offi.counts.high}\n` +
     `           ④ 정비사업 ${rep.rebuild ? `신규 ${rep.rebuild.counts.news} / 해제 ${rep.rebuild.counts.cancels} — ${rep.rebuild.changed ? '변경 있음 → ⑤ 발행' : '변경 없음 → ⑤ 생략'}` : '캐시 없음 — 건너뜀'}\n` +
-    `           확정월 ${confirm.monthLabel ?? '없음'} · 잠정 ${confirm.provisionalMonths}개월 / ${confirm.provisionalWeeks}주`
+    `           확정월 ${confirm.monthLabel ?? '없음'} · 잠정 ${confirm.provisionalMonths}개월 / ${confirm.provisionalWeeks}주\n` +
+    `           ④ 기준선 출처: ${baseline.from}`
   );
 
   console.log('[ingest] data.js 및 data.json 저장 중...');
