@@ -318,6 +318,12 @@ body:has(#dashView:not(.hidden)){background:#0F1319!important;color:var(--bd-pap
   margin:0 0 8px;max-width:24ch;color:#E8ECF2}
 #v2Headline .hl-accent{color:var(--bd-coral);white-space:nowrap}
 #v2Headline .hl-num{font-family:var(--bd-num);font-variant-numeric:tabular-nums}
+/* 신고 진행 중 꼬리표 — 헤드라인 키커와 증감률 옆에 같은 모양으로 붙는다.
+   빗금(추이 그래프)과 같은 뜻을 글자로 말하는 자리다. */
+.v2-provtag,.prov-tag{display:inline-block;margin-left:.4em;padding:.1em .45em;border-radius:4px;
+  font-size:.72em;font-weight:700;letter-spacing:0;white-space:nowrap;vertical-align:.08em;
+  background:rgba(245,158,11,.16);color:#b45309;border:1px solid rgba(245,158,11,.38)}
+#v2Kicker .v2-provtag{background:rgba(245,158,11,.22);color:#fbbf24;border-color:rgba(245,158,11,.5)}
 #v2Sub{color:var(--bd-muted);font-size:12.5px;margin:0 0 20px}
 /* KPI 칩 — 휴대폰에서도 한 줄 */
 .v2-chips{display:flex;gap:8px;flex-wrap:nowrap}
@@ -1179,7 +1185,32 @@ const dataProvider = (() => {
 //  viewRange: 활성 periods 배열 내 유효 범위 인덱스
 //  periodIndex는 항상 [viewRange.start, viewRange.end] 안에 있어야 함
 // ════════════════════════════════════════════════
-let granularity      = 'week';
+// ── 확정 / 신고 진행 중 ────────────────────────────
+// 규칙은 data.js 의 report.confirm 하나뿐이다 — ingest.mjs 가 신고 기한 30일로
+// 계산해 실어 보낸다. 화면은 읽기만 한다. 여기에 상수를 또 두면 규칙이 둘이 되고,
+// 실제로 그랬다(화면 PROVISIONAL_SPAN={month:2,week:4} vs 리포트 2개월).
+const CONFIRM = (RAW && RAW.report && RAW.report.confirm) || null;
+
+/** 해당 단위에서 신고가 아직 차오르는 중인 최근 기간 수. */
+function provisionalSpan(gran) {
+  if (!CONFIRM) return gran === 'week' ? 4 : 2;   // confirm 없는 구버전 data.js 폴백
+  return gran === 'week' ? CONFIRM.provisionalWeeks : CONFIRM.provisionalMonths;
+}
+/** periods 배열의 idx 번째가 신고 진행 중인가. */
+function isProvisional(gran, idx, len) {
+  const span = provisionalSpan(gran);
+  return span > 0 && idx >= len - span;
+}
+const PROV_LABEL = (CONFIRM && CONFIRM.provisionalLabel) || '신고 진행 중';
+
+/** 월 periods 배열에서 확정월의 인덱스. 범위를 벗어나면 마지막으로 물러선다. */
+function confirmedIndex(len) {
+  const byData = CONFIRM && Number.isInteger(CONFIRM.monthIndex) ? CONFIRM.monthIndex : -1;
+  const idx = byData >= 0 ? byData : len - 1 - provisionalSpan('month');
+  return Math.max(0, Math.min(len - 1, idx));
+}
+
+let granularity      = 'month';   // 첫 화면은 확정월(아래 초기화에서 맞춘다)
 let selectedDistrict = null; // 초기 화면은 서울 전체. '강남구' 하드코딩은 개발 잔재였다 —
                              // "선택: 서울 전체" 표시와 KPI 가 어긋나던 원인 (2026-09-04 수정)
 let periods          = [];
@@ -1239,18 +1270,26 @@ function deltaPct(curr, prev) {
   return parseFloat(((curr - prev) / prev * 100).toFixed(1));
 }
 
-function renderDelta(elementId, curr, prev) {
+/**
+ * 증감률 한 줄. 신고가 아직 차오르는 기간이면 **숫자 옆에 그렇다고 적는다.**
+ * 이 값은 "신고 진행 중인 주 vs 그 전 주"가 되기 쉬운데, 그러면 미신고분이
+ * 그대로 감소율로 읽힌다(2026-09-28 강서구 "▼ 84.2%"). 비교 자체를 확정 기간으로
+ * 옮기지 않는 이유는 타임라인이 임의 기간을 고를 수 있는 화면이기 때문이다 —
+ * 고른 기간의 값을 보여 주되, 그것이 무엇인지 같이 적는다.
+ */
+function renderDelta(elementId, curr, prev, provisional = false) {
   const el = document.getElementById(elementId);
   const pct = deltaPct(curr, prev);
-  if (pct === null) { el.textContent = '—'; el.className = 'text-xs mt-1 font-semibold text-slate-500'; return; }
+  const tag = provisional ? ` <span class="prov-tag">${PROV_LABEL}</span>` : '';
+  if (pct === null) { el.innerHTML = '—' + tag; el.className = 'text-xs mt-1 font-semibold text-slate-500'; return; }
   if (pct > 0) {
-    el.textContent = `▲ ${pct}%`;
+    el.innerHTML = `▲ ${pct}%` + tag;
     el.className = 'text-xs mt-1 font-semibold text-red-600';
   } else if (pct < 0) {
-    el.textContent = `▼ ${Math.abs(pct)}%`;
+    el.innerHTML = `▼ ${Math.abs(pct)}%` + tag;
     el.className = 'text-xs mt-1 font-semibold text-blue-600';
   } else {
-    el.textContent = '— 0%';
+    el.innerHTML = '— 0%' + tag;
     el.className = 'text-xs mt-1 font-semibold text-slate-500';
   }
 }
@@ -1312,16 +1351,15 @@ function renderKPI() {
   document.getElementById('kpiDistrictLabel2').textContent = labelText;
   document.getElementById('kpiApt').textContent            = apt.toLocaleString();
   document.getElementById('kpiNon').textContent            = nonApt.toLocaleString();
-  renderDelta('kpiAptDelta', apt,    prevApt);
-  renderDelta('kpiNonDelta', nonApt, prevNonApt);
+  const deltaProvisional = isProvisional(granularity, periodIndex, periods.length);
+  renderDelta('kpiAptDelta', apt,    prevApt,    deltaProvisional);
+  renderDelta('kpiNonDelta', nonApt, prevNonApt, deltaProvisional);
   // 잠정 구간이면 KPI에 잠정치 표기 (급락 오해 방지).
-  // 규칙은 리포트와 동일하다 — 월간: 최근 2개월(ingest.mjs REPORT_TREND_PROVISIONAL 과
-  // 같은 값), 주간: 최근 4주(신고 기한 30일 반영). 2026-09-04 통일.
-  const PROVISIONAL_SPAN = { month: 2, week: 4 };
+  // 개월·주 수는 report.confirm 에서 온다 — 리포트 빗금·헤드라인과 같은 규칙이다.
   const prov = document.getElementById('kpiProvisional');
   if (prov) {
-    const span = PROVISIONAL_SPAN[granularity] ?? 1;
-    const inProvisional = periodIndex >= periods.length - span;
+    const span = provisionalSpan(granularity);
+    const inProvisional = isProvisional(granularity, periodIndex, periods.length);
     prov.classList.toggle('hidden', !inProvisional);
     if (inProvisional) {
       const unit = granularity === 'week' ? `${span}주` : `${span}개월`;
@@ -1459,12 +1497,20 @@ function renderDistrictChart() {
   //   room:  아파트 포함 전체. 단, 단독/다가구는 전용면적 미제공으로 제외
   //   price: 비아파트(연립다세대+단독다가구+오피스텔)만. 아파트는 미포함
   const noteEl = document.getElementById('chartNote');
+  const provNote = (() => {
+    const n = provisionalSpan(granularity);
+    if (n <= 0) return null;
+    const unit = granularity === 'week' ? `${n}주` : `${n}개월`;
+    return `※ △ 표시한 최근 ${unit}은 ${PROV_LABEL}이라 실제보다 낮게 나옵니다` +
+           (CONFIRM ? ` (${CONFIRM.rule}).` : '.');
+  })();
   const NOTES = {
+    trend: provNote,
     room:  '※ 단독/다가구는 전용면적 미제공으로 공간규격 집계에서 제외됩니다.',
     price: '※ 금액대 집계 대상은 비아파트(연립다세대+단독다가구+오피스텔)입니다. 아파트는 포함되지 않습니다.'
   };
-  noteEl.classList.toggle('hidden', !(chartMode in NOTES));
-  if (chartMode in NOTES) noteEl.textContent = NOTES[chartMode];
+  noteEl.classList.toggle('hidden', !NOTES[chartMode]);
+  if (NOTES[chartMode]) noteEl.textContent = NOTES[chartMode];
   const ctx = document.getElementById('districtChart').getContext('2d');
 
   let type, data, options;
@@ -1482,13 +1528,25 @@ function renderDistrictChart() {
       aptSeries    = trend.map(t => t.apt);
       nonAptSeries = trend.map(t => t.nonApt);
     }
-    const labels = dataProvider.getPeriods(granularity).map(k => periodShortLabel(k, granularity));
+    const allKeys = dataProvider.getPeriods(granularity);
+    const labels = allKeys.map(k => periodShortLabel(k, granularity));
+    // 신고 진행 중인 기간은 색을 빼고 점선 테두리를 둘러 확정 막대와 갈라 놓는다.
+    // 라벨에도 △ 를 붙인다 — 색만으로는 색각 이상에서 구분되지 않는다.
+    const provCount = provisionalSpan(granularity);
+    const isProv = i => provCount > 0 && i >= allKeys.length - provCount;
+    const provLabels = labels.map((l, i) => isProv(i) ? `△${l}` : l);
+    const fill = (solid, faded) => allKeys.map((_, i) => isProv(i) ? faded : solid);
+    const edge = allKeys.map((_, i) => isProv(i) ? 'rgba(232,236,242,.55)' : 'transparent');
     type = 'bar';
     data = {
-      labels,
+      labels: provLabels,
       datasets: [
-        { label: '아파트',   data: aptSeries,    backgroundColor: 'rgba(255,107,94,0.80)', borderRadius: 2 },
-        { label: '비아파트', data: nonAptSeries, backgroundColor: 'rgba(107,168,255,0.55)', borderRadius: 2 }
+        { label: '아파트',   data: aptSeries,
+          backgroundColor: fill('rgba(255,107,94,0.80)', 'rgba(255,107,94,0.22)'),
+          borderColor: edge, borderWidth: 1, borderDash: [2, 2], borderRadius: 2 },
+        { label: '비아파트', data: nonAptSeries,
+          backgroundColor: fill('rgba(107,168,255,0.55)', 'rgba(107,168,255,0.16)'),
+          borderColor: edge, borderWidth: 1, borderDash: [2, 2], borderRadius: 2 }
       ]
     };
     options = CHART_LIGHT_OPTS;
@@ -1942,7 +2000,10 @@ function setGranularity(gran) {
   periods     = dataProvider.getPeriods(gran);
   // viewRange를 전체 범위로 리셋 (스펙 요구사항)
   viewRange   = { start: 0, end: periods.length - 1 };
-  periodIndex = viewRange.end;
+  // 월간은 **확정월**에 착지한다. 마지막 달은 신고 기한이 안 지나 늘 낮게 나오고,
+  // 그걸 헤드라인에 세우면 매주 가짜 급감이 뜬다(2026-09-28: "전주 대비 −89.8%").
+  // 주간은 지금까지대로 마지막 주에 선다 — 최근 동향을 보는 화면이기 때문이다.
+  periodIndex = gran === 'month' ? confirmedIndex(periods.length) : viewRange.end;
 
   const wBtn = document.getElementById('btnWeek');
   const mBtn = document.getElementById('btnMonth');
@@ -1975,7 +2036,7 @@ function selectDistrict(district) {
 // ════════════════════════════════════════════════
 //  초기화
 // ════════════════════════════════════════════════
-setGranularity('week');
+setGranularity('month');
 // ════════════════════════════════════════════════
 //  리포트 모드 (블록 ① 국평 신고가)
 //  데이터는 data.js 의 report 키. 계산은 ingest.mjs 의 buildReport 가 끝냈다.
@@ -2109,8 +2170,9 @@ function rptTrendSvg(t) {
   const x = i => L + (W - L - R) * (n === 1 ? 0 : i / (n - 1));
   const y = v => T + (H - T - B) * (1 - v / top);
 
-  // 잠정 구간(최근 2개월)은 점선으로 끊어 그리고 뒤에 옅은 띠를 깐다.
-  // 신고 지연으로 아직 차오르는 중이라 확정치처럼 보이면 거래 감소로 읽힌다.
+  // 잠정 구간은 점선으로 끊어 그리고 뒤에 옅은 띠를 깐다. 몇 개월인지는
+  // t.provisional 이 정한다 — ingest.mjs 가 신고 기한 30일로 계산한 값이고,
+  // 화면 빗금·헤드라인과 같은 규칙이다. 확정치처럼 보이면 거래 감소로 읽힌다.
   const provFrom = n - t.provisional;
   const path = (arr, from, to) =>
     arr.slice(from, to + 1).map((v, k) => `${k ? 'L' : 'M'}${x(from + k).toFixed(1)},${y(v).toFixed(1)}`).join('');
@@ -2127,7 +2189,7 @@ function rptTrendSvg(t) {
     s += `<rect class="rpt-provband" x="${x(provFrom - .5).toFixed(1)}" y="${T}" ` +
          `width="${(W - R - x(provFrom - .5)).toFixed(1)}" height="${H - T - B}"/>` +
          `<text class="rpt-note" x="${(W - R).toFixed(1)}" y="${T + 12}" text-anchor="end">` +
-         `<tspan class="rpt-note--em">잠정</tspan> — 신고 지연으로 아직 차오르는 중</text>`;
+         `<tspan class="rpt-note--em">${t.provisional}개월 신고 진행 중</tspan> — 아직 차오르는 중</text>`;
   }
   for (let v = 0; v <= top; v += step) {
     s += `<line class="rpt-grid" x1="${L}" y1="${y(v).toFixed(1)}" x2="${W - R}" y2="${y(v).toFixed(1)}"/>` +
@@ -2277,8 +2339,8 @@ function setViewMode(mode) {
 // ══════════════════════════════════════════════════════════════
 (function () {
   const $ = id => document.getElementById(id);
-  // renderKPI 안의 같은 상수와 값을 맞춰야 한다(거기 것을 고치지 않기로 했으므로 복제).
-  const PROV_SPAN = { month: 2, week: 4 };
+  // 복제 상수였던 것을 없앴다 — provisionalSpan() 하나가 report.confirm 에서 읽는다.
+  // 화면 두 곳과 리포트가 각각 자기 숫자를 들고 있으면 빗금 범위가 서로 어긋난다.
   const LS_KEY = 'bdDashV2';
 
   // ── 골격으로 옮기기 (한 번만) ────────────────────────────
@@ -2368,15 +2430,29 @@ function setViewMode(mode) {
     const d = prev ? pctText(cur.apt, prev.apt) : null;
     const top = rankOf('__none__', key).top;
 
-    $('v2Kicker').textContent = formatPeriodLabel(key, granularity);
-    const line1 = `이번 ${unitWord()} 서울 아파트 <span class="hl-num">${cur.apt.toLocaleString()}</span>건`;
+    // 지금 보고 있는 기간이 신고 진행 중인가. 헤드라인·칩·부제가 전부 이걸 본다.
+    const provNow = isProvisional(granularity, periodIndex, periods.length);
+    const periodLabel = formatPeriodLabel(key, granularity);
+
+    $('v2Kicker').innerHTML = periodLabel +
+      (provNow ? ` <span class="v2-provtag">${PROV_LABEL}</span>` : '');
+
+    // "이번 주/달" 이 아니라 기간 이름을 그대로 쓴다. 첫 화면은 확정월이라
+    // "이번 달" 이 실제 이번 달이 아니고, 그 어긋남이 그대로 오해가 된다.
+    const line1 = `${periodLabel} 서울 아파트 <span class="hl-num">${cur.apt.toLocaleString()}</span>건`;
     const rest = [];
     if (d)   rest.push(`${prevWord()} 대비 <span class="hl-accent hl-num">${d.text}</span>`);
     if (top) rest.push(`거래 1위 <span class="hl-accent">${top.district}</span>`);
     $('v2Headline').innerHTML = line1 + (rest.length ? '<br>' + rest.join(' · ') : '');
 
     const meta = (window.__DASHBOARD_DATA__ || {});
-    $('v2Sub').textContent = `데이터 수집일 ${meta.generatedAt || '—'} · 직거래 포함 · 취소된 계약 제외`;
+    // 확정 규칙 한 줄. 문구는 ingest.mjs 가 상수에서 만들어 실어 보낸 것을 그대로 쓴다.
+    const ruleLine = CONFIRM ? CONFIRM.rule : null;
+    $('v2Sub').textContent =
+      [`데이터 수집일 ${meta.generatedAt || '—'}`,
+       ruleLine,
+       provNow ? `지금 보는 기간은 ${PROV_LABEL} — 실제보다 낮게 나온다` : null,
+       '직거래 포함 · 취소된 계약 제외'].filter(Boolean).join(' · ');
 
     $('v2ChipApt').innerHTML = `${cur.apt.toLocaleString()}건` +
       (d ? ` <span class="${d.cls}">${d.text}</span>` : '');
@@ -2438,7 +2514,7 @@ function setViewMode(mode) {
       const t = totalsFor(k, selectedDistrict);
       return { k, v: t.apt + t.nonApt };
     });
-    const span = PROV_SPAN[granularity] ?? 1;
+    const span = provisionalSpan(granularity);
     const provFrom = Math.max(0, series.length - Math.min(span, periods.length - (periods.length - span)));
     const firstProvIdx = series.findIndex((p, i) => (start + i) >= periods.length - span);
     $('v2Spark').innerHTML = sparkSVG(series, firstProvIdx < 0 ? series.length : firstProvIdx);
@@ -2454,9 +2530,11 @@ function setViewMode(mode) {
 
     const unitLabel = granularity === 'week' ? '주' : '개월';
     $('v2SparkLabel').textContent = `최근 ${series.length}${unitLabel} 추이`;
-    $('v2SparkNote').textContent = granularity === 'week'
-      ? `빗금 ${span}주는 신고가 들어오는 중이라 낮게 보인다`
-      : `빗금 ${span}개월은 신고가 들어오는 중이라 낮게 보인다`;
+    $('v2SparkNote').textContent = span <= 0
+      ? '전 구간 신고 기한이 지난 확정치다'
+      : (granularity === 'week'
+          ? `빗금 ${span}주는 ${PROV_LABEL} — 신고가 들어오는 중이라 낮게 보인다`
+          : `빗금 ${span}개월은 ${PROV_LABEL} — 신고가 들어오는 중이라 낮게 보인다`);
   }
 
   // ── 신호 한 줄: 직거래 · 취소 ────────────────────────────

@@ -1,0 +1,120 @@
+# 정비사업 수집 — 서울 열린데이터광장에서 정비구역 신규 지정 / 해제를 받아 캐시를 갱신한다.
+#
+# 2026-09-30 신설. 그전까지 수집기(ingest-rebuild.mjs)는 완성돼 있는데 **부르는
+# 예약 실행이 없어서** 캐시가 2026-09-04 커밋에서 멈춰 있었다. 라이브의 "최신 신규
+# 지정"이 2026-07-23 에 고정돼 있던 원인이 이것이다. 돌지 않는 작업은 실패하지도
+# 않으므로 freshness 감시에도 걸리지 않았다.
+#
+# 이 워크플로는 **캐시만** 갱신한다. data.js 는 건드리지 않는다 —
+# 화면에 반영되는 시점은 다음 월요일 ingest.yml 이고, 그때 ingest.mjs 의
+# loadRebuildCache() 가 이 캐시를 읽어 report.rebuild 를 다시 만든다.
+# 리포트 ⑤번 그림도 그 수집에서 "직전 대비 변경 있음"이면 함께 나간다.
+name: 정비사업 수집
+
+on:
+  schedule:
+    # 매월 1일 20:00 UTC = 매월 2일 05:00 KST (KST = UTC+9, 서머타임 없음).
+    # 월 1회인 이유: 고시 데이터라 주 단위로는 거의 바뀌지 않는다.
+    # 2일에 도는 이유: 그 뒤 첫 월요일 07:00 KST 수집이 결과를 화면·리포트로 내보낸다.
+    #
+    # 실패 알림은 **cron 을 마지막으로 고친 사람**에게 간다 — ingest.yml 과 같다.
+    # 에이전트가 이 줄을 건드리면 알림이 새므로 cron 수정은 사람이 직접 한다.
+    - cron: '0 20 1 * *'
+  workflow_dispatch:
+    inputs:
+      fresh:
+        description: '캐시를 무시하고 전량 재수집한다 (기본값 — 새 고시를 잡으려면 필요하다)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# 캐시 파일을 두 실행이 동시에 고치면 결과를 알 수 없다. 진행 중인 것은 취소하지 않는다.
+concurrency:
+  group: ingest-rebuild
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # ingest-rebuild.mjs 는 의존성이 없다(내장 fetch 만 쓴다). npm ci 를 하지 않는다.
+
+      # 기본은 --fresh 다. 캐시 모드는 "이미 받은 페이지 범위"를 건너뛰는데,
+      # 새 고시가 들어오면 페이지 경계가 밀려 기존 범위의 내용 자체가 바뀐다 —
+      # 캐시 모드로는 새 지정·해제를 영영 못 본다. 전량이라야 68회뿐이고
+      # 이 API 는 호출 횟수 제한이 없다(docs/정비사업-데이터-확인.md 부록).
+      - name: 수집 실행
+        env:
+          SEOUL_OPENAPI_KEY: ${{ secrets.SEOUL_OPENAPI_KEY }}
+        run: |
+          if [ -z "${SEOUL_OPENAPI_KEY}" ]; then
+            echo "::error::SEOUL_OPENAPI_KEY 시크릿이 없다 — Settings > Secrets > Actions 에 등록하라"
+            exit 1
+          fi
+          if [ "${{ inputs.fresh }}" = "false" ]; then
+            node dashboard/ingest-rebuild.mjs
+          else
+            node dashboard/ingest-rebuild.mjs --fresh
+          fi
+
+      - name: 변경 확인
+        id: diff
+        run: |
+          git add dashboard/.cache/rebuild
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "새 고시 없음 — 반영할 것이 없다"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "캐시 파일 $(git diff --cached --name-only | wc -l | tr -d ' ')개 변경"
+          fi
+
+      # main 은 ruleset 보호라 PR 로 들어간다 — ingest.yml 과 같은 경로.
+      # 요구 승인이 0건이라 승인 없이 병합된다.
+      #
+      # 발행(pages.yml)을 여기서 부르지 않는다. 캐시만 바뀐 상태로 발행해 봐야
+      # data.js 가 그대로라 화면은 달라지지 않는다. 반영은 다음 월요일 수집의 몫이다.
+      - name: PR 로 반영
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="rebuild/$(date -u +%Y%m%d-%H%M%S)"
+
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git commit -m "data: 정비사업 수집 $DATE" \
+                     -m "GitHub Actions 자동 수집 (실행 ${{ github.run_id }}). 캐시만 갱신한다 — 화면 반영은 다음 월요일 수집."
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "data: 정비사업 수집 $DATE" \
+            --body "$(printf '%s\n' \
+              '서울 열린데이터광장 정비사업 캐시를 갱신했다. 요구 승인이 0건이라 승인 없이 병합된다.' \
+              '' \
+              '화면·리포트 반영은 다음 월요일 `ingest.yml` 이 한다. 그 수집에서' \
+              '직전 대비 신규 지정·해제가 바뀌었으면 리포트 ⑤번 그림도 함께 나간다.' \
+              '' \
+              "실행: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"
+
+          gh pr merge "$BRANCH" --squash --delete-branch
+
+      - name: 결과
+        if: always()
+        run: |
+          if [ "${{ steps.diff.outputs.changed }}" = "false" ]; then
+            echo "수집은 됐으나 새 고시가 없다 — 리포트 ⑤ 는 다음에도 나가지 않는다"
+          fi

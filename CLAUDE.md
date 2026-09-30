@@ -27,6 +27,11 @@ script 태그를 쓰는 이유는 `file://`로 열어도 동작하게 하기 위
   - `claude.yml` — 이슈·PR의 `@claude` 멘션으로 에이전트 실행
   - `ingest.yml` — **수집**. 매주 월 07:00 KST(`cron '0 22 * * 0'` UTC) + 수동 실행.
     성공했고 데이터가 바뀐 경우에만 PR 을 열어 병합하고 발행을 호출한다
+  - `ingest-rebuild.yml` — **정비사업 수집**. 매월 2일 05:00 KST(`cron '0 20 1 * *'` UTC)
+    + 수동 실행. `.cache/rebuild/` 만 갱신하고 PR 로 병합한다. 화면 반영은 다음
+    월요일 `ingest.yml` 의 몫이다(발행을 직접 부르지 않는다)
+  - `report.yml` — **리포트 PNG**. cron 없음. `ingest.yml` 이 부르거나 수동 실행.
+    장수가 고정이 아니다 — 매주 4장, 정비사업(05)은 새 지정·해제가 생긴 수집에만
 - `.github/claude-ci-settings.json` — CI 전용 permissions. `ask`를 두지 않는다
   (CI엔 물어볼 사람이 없어 ask가 곧 거부가 된다). 훅 3개는 로컬과 동일하게 싣는다
 - `docs/` — 기술 조사·작업 기록. 사업·기획 문서는 넣지 않는다(아래 참조)
@@ -84,3 +89,15 @@ npm run verify                       # puppeteer UI 품질 게이트
   같은 명령으로 한 번 찾아 검사가 닿는지부터 확인한다**(대조군).
 - 캐시 스키마를 바꿀 때는 `ingest.mjs`의 `CACHE_SCHEMA_VERSION` 상수를 올린다
   (현재 3). 그래야 구버전 캐시가 무효가 되어 전량 재수집된다.
+- **"확정"의 정의는 `ingest.mjs`의 `REPORT_LAG_DAYS`(30일) 하나다.** 헤드라인이
+  어느 달을 세우는지, 추이 그래프가 몇 칸을 빗금 치는지, 증감률에 "신고 진행 중"이
+  붙는지가 전부 여기서 나와 `data.js`의 `report.confirm` 으로 화면에 실린다.
+  화면에 상수를 따로 두지 말 것 — 예전에 `PROVISIONAL_SPAN` 이 화면 두 곳에
+  복제돼 있었고 리포트와 값이 어긋났다(2026-09-30 정리).
+- **재수집 창(`RECENT_REFETCH_MONTHS`)은 3개월 아래로 내리지 않는다.** 2개월이면
+  신고 기한(말일+30일)이 끝나기 전에 창을 벗어나는 달이 생겨 미완성인 채로 얼어붙는다.
+  실제로 2026-08 이 3,115건(7월 대비 −37%)에서 멈출 뻔했다.
+- **`reports/latest/05.png` 를 지우지 않는다.** 정비사업 그림이 없는 주에도 그대로
+  둔다 — 회사 사이트(`~/barun-realestate-site/index.html`)가 이 주소를 `<img>` 와
+  다운로드 링크로 직접 걸고 있어 지우면 깨진 이미지가 뜬다. 그 주 산출물인지는
+  `reports/latest/manifest.json` 의 `rebuildIncluded` 와 `date` 로 판정한다.

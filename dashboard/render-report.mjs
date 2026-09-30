@@ -11,7 +11,7 @@
  * verify-quality.mjs 가 같은 방식(file:// + networkidle0)을 쓴다. CI 도 그쪽 크롬을 깐다.
  */
 import puppeteer from 'puppeteer';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { verifyReport } from './verify-report.mjs';
@@ -20,17 +20,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD = pathToFileURL(join(__dirname, 'dashboard.html')).href;
 const OUT_DIR = join(__dirname, 'out');
 
-// 발행 주기로 폴더를 가른다. ①②③⑤ 는 매번 나가고 ④ 정비사업은 월 1회다
-// (고시 데이터라 주 단위로는 거의 바뀌지 않고, 수집도 아직 수동이다).
-// 폴더가 갈려 있으면 발행할 때 "이번에 무엇을 올리는가"를 헷갈릴 일이 없다.
+// 발행 주기로 폴더를 가른다. 매주 네 장은 늘 나가고, 정비사업은 **새 지정이나
+// 해제가 실제로 생긴 달에만** 다섯 번째로 붙는다(report.rebuild.changed).
+// 고시 수집은 월 1회라 대부분의 주에는 바뀔 것이 없고, 안 바뀐 그림을 매주
+// 다시 내면 받는 쪽이 "이번 주에 뭔가 생겼다"로 읽는다.
 // 파일명 앞 번호는 폴더 안에서 정렬하면 리포트 순서 그대로 선다.
-const BLOCKS = [
-  { id: 'rptBlock1', file: '매주/01-신고가신저가.png' },
-  { id: 'rptBlock2', file: '매주/02-거래1위.png' },
-  { id: 'rptBlock3', file: '매주/03-비아파트.png' },
-  { id: 'rptBlock5', file: '매주/04-거래량추이.png' },
-  { id: 'rptBlock4', file: '월간/정비사업.png' },
+const WEEKLY_BLOCKS = [
+  { id: 'rptBlock1', file: '매주/01-신고가신저가.png', slot: '01' },
+  { id: 'rptBlock2', file: '매주/02-거래1위.png',      slot: '02' },
+  { id: 'rptBlock3', file: '매주/03-비아파트.png',     slot: '03' },
+  { id: 'rptBlock5', file: '매주/04-거래량추이.png',   slot: '04' },
 ];
+const REBUILD_BLOCK = { id: 'rptBlock4', file: '월간/정비사업.png', slot: '05' };
 
 async function render() {
   const browser = await puppeteer.launch();
@@ -48,6 +49,17 @@ async function render() {
   const hasReport = await page.evaluate(() => !!(window.__DASHBOARD_DATA__?.report?.meta));
   if (!hasReport) throw new Error('data.js 에 report 가 없다 — 수집을 먼저 실행하라');
 
+  // ⑤ 정비사업을 이번에 낼지. 판정은 ingest.mjs 가 직전 data.js 와 대조해 남긴다.
+  const rebuild = await page.evaluate(() => {
+    const r = window.__DASHBOARD_DATA__?.report?.rebuild;
+    return r ? { changed: !!r.changed, news: r.counts?.news ?? 0, cancels: r.counts?.cancels ?? 0 } : null;
+  });
+  const includeRebuild = !!(rebuild && rebuild.changed);
+  const BLOCKS = includeRebuild ? [...WEEKLY_BLOCKS, REBUILD_BLOCK] : WEEKLY_BLOCKS;
+  console.log(includeRebuild
+    ? `  ⑤ 정비사업 포함 — 신규 ${rebuild.news} / 해제 ${rebuild.cancels} (직전 수집 대비 변경 있음)`
+    : `  ⑤ 정비사업 생략 — ${rebuild ? '직전 수집 대비 변경 없음' : '정비사업 데이터 없음'}`);
+
   await page.click('#btnReport');
 
   // 폰트가 붙기 전에 찍으면 글자가 대체 글꼴로 남는다. 폰트와 렌더를 모두 기다린다.
@@ -56,7 +68,7 @@ async function render() {
 
   mkdirSync(OUT_DIR, { recursive: true });
   const saved = [];
-  for (const { id, file } of BLOCKS) {
+  for (const { id, file, slot } of BLOCKS) {
     const el = await page.$(`#${id}`);
     if (!el) throw new Error(`블록을 찾지 못했다: #${id}`);
     const box = await el.boundingBox();
@@ -66,11 +78,32 @@ async function render() {
     const path = join(OUT_DIR, file);
     mkdirSync(dirname(path), { recursive: true });
     await el.screenshot({ path });
-    saved.push({ file, w: Math.round(box.width), h: Math.round(box.height), path });
+    saved.push({ file, slot, w: Math.round(box.width), h: Math.round(box.height), path });
   }
 
   await browser.close();
-  return { saved, errors };
+
+  // 이번 발행에 무엇이 들어갔는지 기계가 읽을 수 있게 남긴다.
+  // 뒤따르는 작업(블로그 글·알림·쇼츠)이 "이번 주에 정비사업이 있었나"를
+  // 사람 눈으로 세지 않고 이 파일 하나로 판정한다.
+  const generatedAt = await readGeneratedAt();
+  const manifest = {
+    date: generatedAt,
+    rebuildIncluded: includeRebuild,
+    rebuild: rebuild ? { news: rebuild.news, cancels: rebuild.cancels } : null,
+    slots: saved.map(s => s.slot),
+    note: includeRebuild
+      ? '05 는 이번 수집에서 신규 지정·해제가 생겨 새로 만든 것이다'
+      : '05 는 이번 주 산출물이 아니다 — 직전에 만든 것이 그대로 남아 있다',
+  };
+  writeFileSync(join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  return { saved, errors, manifest };
+}
+
+/** data.js 의 수집일. manifest 에 박아 두면 받는 쪽이 신선도를 스스로 판정한다. */
+async function readGeneratedAt() {
+  const src = readFileSync(join(__dirname, 'data.js'), 'utf8');
+  return src.match(/"generatedAt"\s*:\s*"(\d{4}-\d{2}-\d{2})"/)?.[1] ?? null;
 }
 
 const isDirectRun = (() => {
@@ -88,11 +121,12 @@ if (isDirectRun) {
   }
 
   console.log('\n── 렌더 ──');
-  const { saved, errors } = await render();
+  const { saved, errors, manifest } = await render();
   for (const s of saved) {
     console.log(`  ${s.file}  ${s.w}×${s.h} (실제 ${s.w * 2}×${s.h * 2}px, 2배)`);
   }
   console.log(`\n저장 위치: ${OUT_DIR}`);
+  console.log(`manifest: ${manifest.slots.join(',')} · 정비사업 ${manifest.rebuildIncluded ? '포함' : '미포함'}`);
   if (errors.length) {
     console.error('\n페이지 오류가 있었다:');
     errors.forEach(e => console.error('  ' + e));
