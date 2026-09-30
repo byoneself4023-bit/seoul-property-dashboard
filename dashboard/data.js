@@ -27434,9 +27434,9 @@ window.__DASHBOARD_DATA__ = {
     "meta": {
       "baselineFrom": "20240101",
       "baselineLabel": "2024년 1월 이후 누적",
-      "target": "최근 신고분(9/28 이후)",
+      "target": "최근 신고분(9/30 이후)",
       "targetNote": "직전 수집 대비 새로 들어온 거래. 국토부는 신고일을 제공하지 않아 캐시 대조로 구한다",
-      "targetCount": 794,
+      "targetCount": 0,
       "excludes": [
         "취소된 계약 제외",
         "직거래 제외",
@@ -27450,257 +27450,21 @@ window.__DASHBOARD_DATA__ = {
       "provisional": true,
       "gapZero": "표시상 변동폭이 0.0억인 건 제외",
       "pctNote": "상승률은 표시된 두 금액으로 계산",
-      "trendNote": "계약월 기준 · 진행 중인 당월 제외 · 최근 2개월은 신고 지연으로 아직 차오르는 중(잠정)",
+      "trendNote": "계약월 기준 · 진행 중인 당월 제외 · 신고 기한(30일)이 안 지난 기간은 아직 차오르는 중(잠정)",
       "sourceTrade": "국토교통부 RTMS 실거래가",
       "sourceZone": "서울 열린데이터광장 정비사업 현황",
       "lagNote": "신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다",
-      "deltaLimit": "재수집 범위가 최근 2개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다"
+      "deltaLimit": "재수집 범위가 최근 3개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다"
     },
     "apt": {
-      "target": 433,
+      "target": 0,
       "baseline": 160109,
       "counts": {
-        "high": 128,
-        "low": 8
+        "high": 0,
+        "low": 0
       },
-      "highs": [
-        {
-          "name": "나인원한남",
-          "umd": "한남동",
-          "district": "용산구",
-          "size": 273,
-          "area": 273.4125,
-          "floor": 1,
-          "amount": 2630000,
-          "date": "20260827",
-          "prev": 2550000,
-          "gap": 80000,
-          "pct": 3.1
-        },
-        {
-          "name": "한화엘르빌",
-          "umd": "방배동",
-          "district": "서초구",
-          "size": 189,
-          "area": 189.08,
-          "floor": 3,
-          "amount": 236000,
-          "date": "20260907",
-          "prev": 193000,
-          "gap": 43000,
-          "pct": 22.3
-        },
-        {
-          "name": "서초트라팰리스",
-          "umd": "서초동",
-          "district": "서초구",
-          "size": 73,
-          "area": 73.42,
-          "floor": 11,
-          "amount": 175500,
-          "date": "20260916",
-          "prev": 135000,
-          "gap": 41000,
-          "pct": 30.4
-        },
-        {
-          "name": "역삼동월드메르디앙",
-          "umd": "역삼동",
-          "district": "강남구",
-          "size": 83,
-          "area": 83.27,
-          "floor": 6,
-          "amount": 200000,
-          "date": "20260918",
-          "prev": 160000,
-          "gap": 40000,
-          "pct": 25
-        },
-        {
-          "name": "창전래미안",
-          "umd": "창전동",
-          "district": "마포구",
-          "size": 114,
-          "area": 114.82,
-          "floor": 19,
-          "amount": 175000,
-          "date": "20260916",
-          "prev": 150000,
-          "gap": 25000,
-          "pct": 16.7
-        },
-        {
-          "name": "인왕산아이파크",
-          "umd": "무악동",
-          "district": "종로구",
-          "size": 59,
-          "area": 59.993,
-          "floor": 13,
-          "amount": 148500,
-          "date": "20260724",
-          "prev": 124000,
-          "gap": 24000,
-          "pct": 19.4
-        },
-        {
-          "name": "삼성",
-          "umd": "사당동",
-          "district": "동작구",
-          "size": 84,
-          "area": 84.86,
-          "floor": 10,
-          "amount": 120000,
-          "date": "20260730",
-          "prev": 96000,
-          "gap": 24000,
-          "pct": 25
-        },
-        {
-          "name": "송파파인타운7단지",
-          "umd": "장지동",
-          "district": "송파구",
-          "size": 84,
-          "area": 84.94,
-          "floor": 9,
-          "amount": 208000,
-          "date": "20260923",
-          "prev": 184800,
-          "gap": 23000,
-          "pct": 12.4
-        },
-        {
-          "name": "상아1차아파트",
-          "umd": "창동",
-          "district": "도봉구",
-          "size": 69,
-          "area": 69.03,
-          "floor": 9,
-          "amount": 85000,
-          "date": "20260923",
-          "prev": 63500,
-          "gap": 22000,
-          "pct": 34.9
-        },
-        {
-          "name": "문래우정",
-          "umd": "문래동3가",
-          "district": "영등포구",
-          "size": 59,
-          "area": 59.76,
-          "floor": 14,
-          "amount": 106000,
-          "date": "20260831",
-          "prev": 85000,
-          "gap": 21000,
-          "pct": 24.7
-        }
-      ],
-      "lows": [
-        {
-          "name": "방배서리풀힐스",
-          "umd": "방배동",
-          "district": "서초구",
-          "size": 128,
-          "area": 128.11,
-          "floor": 5,
-          "amount": 131000,
-          "date": "20260708",
-          "prev": 173000,
-          "gap": 42000,
-          "pct": -24.3
-        },
-        {
-          "name": "한양6",
-          "umd": "쌍문동",
-          "district": "도봉구",
-          "size": 83,
-          "area": 83.86,
-          "floor": 1,
-          "amount": 44000,
-          "date": "20260914",
-          "prev": 47500,
-          "gap": 4000,
-          "pct": -8.3
-        },
-        {
-          "name": "신이모닝빌",
-          "umd": "성내동",
-          "district": "강동구",
-          "size": 84,
-          "area": 84.91,
-          "floor": 6,
-          "amount": 89500,
-          "date": "20260704",
-          "prev": 92200,
-          "gap": 3000,
-          "pct": -3.3
-        },
-        {
-          "name": "해주",
-          "umd": "신월동",
-          "district": "양천구",
-          "size": 79,
-          "area": 79.86,
-          "floor": 1,
-          "amount": 43000,
-          "date": "20260730",
-          "prev": 45000,
-          "gap": 2000,
-          "pct": -4.4
-        },
-        {
-          "name": "약수역더시티",
-          "umd": "신당동",
-          "district": "중구",
-          "size": 18,
-          "area": 18.86,
-          "floor": 3,
-          "amount": 23000,
-          "date": "20260723",
-          "prev": 23700,
-          "gap": 1000,
-          "pct": -4.2
-        },
-        {
-          "name": "청원다미소",
-          "umd": "중화동",
-          "district": "중랑구",
-          "size": 84,
-          "area": 84.82,
-          "floor": 4,
-          "amount": 74300,
-          "date": "20260910",
-          "prev": 74500,
-          "gap": 1000,
-          "pct": -1.3
-        },
-        {
-          "name": "수유현대",
-          "umd": "수유동",
-          "district": "강북구",
-          "size": 59,
-          "area": 59.67,
-          "floor": 2,
-          "amount": 43000,
-          "date": "20260831",
-          "prev": 43800,
-          "gap": 1000,
-          "pct": -2.3
-        },
-        {
-          "name": "천호2차이룸아파트",
-          "umd": "천호동",
-          "district": "강동구",
-          "size": 83,
-          "area": 83.81,
-          "floor": 2,
-          "amount": 72000,
-          "date": "20260719",
-          "prev": 73500,
-          "gap": 1000,
-          "pct": -1.4
-        }
-      ]
+      "highs": [],
+      "lows": []
     },
     "rank": {
       "baseline": 160109,
@@ -27785,262 +27549,24 @@ window.__DASHBOARD_DATA__ = {
       "rh": {
         "label": "연립·다세대",
         "volume": 69739,
-        "target": 305,
+        "target": 0,
         "counts": {
-          "high": 66,
-          "low": 9
+          "high": 0,
+          "low": 0
         },
-        "highs": [
-          {
-            "name": "전원빌라",
-            "umd": "신당동",
-            "district": "중구",
-            "size": 48,
-            "area": 48.96,
-            "floor": 1,
-            "amount": 100000,
-            "date": "20260903",
-            "prev": 63000,
-            "gap": 37000,
-            "pct": 58.7
-          },
-          {
-            "name": "굳피플하우징",
-            "umd": "잠실동",
-            "district": "송파구",
-            "size": 49,
-            "area": 49.04,
-            "floor": 5,
-            "amount": 74000,
-            "date": "20260902",
-            "prev": 40000,
-            "gap": 34000,
-            "pct": 85
-          },
-          {
-            "name": "한미타운",
-            "umd": "마천동",
-            "district": "송파구",
-            "size": 60,
-            "area": 60.18,
-            "floor": 3,
-            "amount": 118700,
-            "date": "20260703",
-            "prev": 85000,
-            "gap": 34000,
-            "pct": 40
-          },
-          {
-            "name": "푸른빌",
-            "umd": "개포동",
-            "district": "강남구",
-            "size": 43,
-            "area": 43.22,
-            "floor": 3,
-            "amount": 75000,
-            "date": "20260919",
-            "prev": 53300,
-            "gap": 22000,
-            "pct": 41.5
-          },
-          {
-            "name": "(293-12)",
-            "umd": "석촌동",
-            "district": "송파구",
-            "size": 21,
-            "area": 21,
-            "floor": 3,
-            "amount": 50000,
-            "date": "20260917",
-            "prev": 27500,
-            "gap": 22000,
-            "pct": 78.6
-          }
-        ],
-        "lows": [
-          {
-            "name": "샬롬아트빌",
-            "umd": "연희동",
-            "district": "서대문구",
-            "size": 55,
-            "area": 55.07,
-            "floor": 3,
-            "amount": 37000,
-            "date": "20260918",
-            "prev": 41500,
-            "gap": 5000,
-            "pct": -11.9
-          },
-          {
-            "name": "벨라캐슬",
-            "umd": "망우동",
-            "district": "중랑구",
-            "size": 52,
-            "area": 52.41,
-            "floor": 5,
-            "amount": 49000,
-            "date": "20260906",
-            "prev": 53000,
-            "gap": 4000,
-            "pct": -7.5
-          },
-          {
-            "name": "금강블루빌(B동)",
-            "umd": "역촌동",
-            "district": "은평구",
-            "size": 57,
-            "area": 57.12,
-            "floor": 5,
-            "amount": 20000,
-            "date": "20260926",
-            "prev": 22900,
-            "gap": 3000,
-            "pct": -13
-          },
-          {
-            "name": "에덴빌30차/센트럴밸리",
-            "umd": "중곡동",
-            "district": "광진구",
-            "size": 58,
-            "area": 58.04,
-            "floor": 3,
-            "amount": 73000,
-            "date": "20260725",
-            "prev": 75000,
-            "gap": 2000,
-            "pct": -2.7
-          },
-          {
-            "name": "정아빌라",
-            "umd": "목동",
-            "district": "양천구",
-            "size": 36,
-            "area": 36.9,
-            "floor": -1,
-            "amount": 24000,
-            "date": "20260917",
-            "prev": 25700,
-            "gap": 2000,
-            "pct": -7.7
-          }
-        ]
+        "highs": [],
+        "lows": []
       },
       "offi": {
         "label": "오피스텔",
         "volume": 22244,
-        "target": 56,
+        "target": 0,
         "counts": {
-          "high": 10,
-          "low": 3
+          "high": 0,
+          "low": 0
         },
-        "highs": [
-          {
-            "name": "현대하이페리온",
-            "umd": "목동",
-            "district": "양천구",
-            "size": 153,
-            "area": 153.68,
-            "floor": 1,
-            "amount": 325000,
-            "date": "20260909",
-            "prev": 270000,
-            "gap": 55000,
-            "pct": 20.4
-          },
-          {
-            "name": "(339-4)",
-            "umd": "후암동",
-            "district": "용산구",
-            "size": 34,
-            "area": 34.38,
-            "floor": 6,
-            "amount": 29000,
-            "date": "20260730",
-            "prev": 25800,
-            "gap": 3000,
-            "pct": 11.5
-          },
-          {
-            "name": "종로오피스텔",
-            "umd": "낙원동",
-            "district": "종로구",
-            "size": 25,
-            "area": 25.2,
-            "floor": 13,
-            "amount": 18000,
-            "date": "20260908",
-            "prev": 16000,
-            "gap": 2000,
-            "pct": 12.5
-          },
-          {
-            "name": "브라운스톤서울",
-            "umd": "중림동",
-            "district": "중구",
-            "size": 62,
-            "area": 62.82,
-            "floor": 30,
-            "amount": 79500,
-            "date": "20260829",
-            "prev": 77500,
-            "gap": 2000,
-            "pct": 2.6
-          },
-          {
-            "name": "아스하임",
-            "umd": "화양동",
-            "district": "광진구",
-            "size": 17,
-            "area": 17.15,
-            "floor": 7,
-            "amount": 22800,
-            "date": "20260912",
-            "prev": 21500,
-            "gap": 2000,
-            "pct": 9.5
-          }
-        ],
-        "lows": [
-          {
-            "name": "서울역 디오빌",
-            "umd": "만리동1가",
-            "district": "중구",
-            "size": 56,
-            "area": 56.17,
-            "floor": 7,
-            "amount": 50000,
-            "date": "20260715",
-            "prev": 51800,
-            "gap": 2000,
-            "pct": -3.8
-          },
-          {
-            "name": "삼환 아르누보",
-            "umd": "역삼동",
-            "district": "강남구",
-            "size": 26,
-            "area": 26.38,
-            "floor": 10,
-            "amount": 18800,
-            "date": "20260910",
-            "prev": 21000,
-            "gap": 2000,
-            "pct": -9.5
-          },
-          {
-            "name": "당산 삼성쉐르빌",
-            "umd": "당산동5가",
-            "district": "영등포구",
-            "size": 24,
-            "area": 24.91,
-            "floor": 11,
-            "amount": 18000,
-            "date": "20260928",
-            "prev": 18500,
-            "gap": 1000,
-            "pct": -5.3
-          }
-        ]
+        "highs": [],
+        "lows": []
       }
     },
     "rebuild": {
@@ -28214,7 +27740,7 @@ window.__DASHBOARD_DATA__ = {
         }
       ],
       "signature": "144::33::2026-08-06|오목교역 역세권 활성화사업(도시정비형 재개발)::2026-05-14|광운대역세권 공공임대주택 건립 관련 도시정비형 재개발정비구역",
-      "changed": true
+      "changed": false
     },
     "trend": {
       "months": [
