@@ -1,0 +1,128 @@
+# 가격 수집 — 한국부동산원 R-ONE 주간 아파트 매매가격지수를 받아 캐시를 갱신한다.
+#
+# 2026-10-01 신설. 대시보드에 거래 "건수"만 있고 "가격"이 없어서 붙였다.
+#
+# ── 왜 한 주에 세 번 도는가 ──────────────────────────
+# 발표는 목요일 14시 KST 지만, 발표가 늦거나 GitHub 예약 실행이 밀리는 일이 있다
+# (이 저장소의 신선도 감시도 00:00 UTC 예약이 03:02 UTC 에 돈 적이 있다).
+# 한 번만 돌면 그 주 값을 통째로 놓치고 다음 주까지 묵은 값이 나간다.
+# 그래서 발표 뒤 세 번 돌린다. **이미 받았거나 아직 발표 전이면 아무것도 바꾸지
+# 않고 정상 종료한다** — 실패가 아니다. 수집기(collectPrice)가 캐시의 주차와
+# 비교해 판정하므로 몇 번을 돌려도 결과가 같다.
+#
+# ── 화면 반영 시점 ───────────────────────────────────
+# 이 워크플로는 **캐시만** 갱신한다. data.js 는 건드리지 않고 발행도 부르지 않는다.
+# 화면·리포트에 실리는 것은 다음 월요일 ingest.yml 의 몫이다
+# (ingest-rebuild.yml 과 같은 규칙).
+name: 가격 수집
+
+on:
+  schedule:
+    # KST = UTC+9, 서머타임 없음. 발표가 목요일 14:00 KST 다.
+    #   목 15:00 KST = 목 06:00 UTC  — 발표 직후 첫 시도
+    #   목 21:00 KST = 목 12:00 UTC  — 발표가 늦어졌을 때
+    #   금 09:00 KST = 금 00:00 UTC  — 예약 실행이 밀렸을 때 마지막 그물
+    #
+    # 실패 알림은 cron 을 마지막으로 고친 사람에게 간다 — 수정은 사람이 직접 한다.
+    - cron: '0 6 * * 4'
+    - cron: '0 12 * * 4'
+    - cron: '0 0 * * 5'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '이미 받은 주차도 다시 받아 캐시를 덮어쓴다'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# 같은 주에 여러 번 도는 워크플로다. 겹쳐 돌면 캐시 파일을 두 실행이 다툰다.
+concurrency:
+  group: ingest-price
+  cancel-in-progress: false
+
+jobs:
+  price:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # ingest-price.mjs 는 의존성이 없다(내장 fetch 만 쓴다). npm ci 를 하지 않는다.
+
+      - name: 수집 실행
+        id: collect
+        env:
+          REB_SERVICE_KEY: ${{ secrets.REB_SERVICE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REB_SERVICE_KEY}" ]; then
+            echo "::error::REB_SERVICE_KEY 시크릿이 없다 — Settings > Secrets > Actions 에 등록하라"
+            exit 1
+          fi
+          ARGS=""
+          [ "${{ inputs.force }}" = "true" ] && ARGS="--force"
+          # 출력을 요약에 그대로 싣는다. "수집 완료 / 발표 전" 문구가 여기 찍힌다.
+          node dashboard/ingest-price.mjs $ARGS | tee /tmp/price.log
+
+      - name: 변경 확인
+        id: diff
+        run: |
+          git add dashboard/.cache/price
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "캐시 변경 없음 — 이미 받았거나 아직 발표 전이다. 정상 종료한다"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "캐시 $(git diff --cached --name-only | wc -l | tr -d ' ')개 파일 변경"
+          fi
+
+      # main 은 ruleset 보호라 PR 로 들어간다 — 다른 수집 워크플로와 같은 경로.
+      - name: PR 로 반영
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASOF=$(node -e "
+            const fs=require('node:fs'), dir='dashboard/.cache/price';
+            const f=fs.readdirSync(dir).filter(x=>/^[0-9]{6}\.json$/.test(x)).sort().pop();
+            process.stdout.write(JSON.parse(fs.readFileSync(dir+'/'+f,'utf8')).asOf);
+          ")
+          [ -n "$ASOF" ] || { echo "::error::캐시에서 기준일을 읽지 못했다"; exit 1; }
+          BRANCH="price/$(date -u +%Y%m%d-%H%M%S)"
+
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git commit -m "data: 가격 수집 ${ASOF} 기준" \
+                     -m "한국부동산원 주간 아파트 매매가격지수. GitHub Actions 자동 수집 (실행 ${{ github.run_id }}). 캐시만 갱신한다 — 화면 반영은 다음 월요일 수집."
+          git push origin "$BRANCH"
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "data: 가격 수집 ${ASOF} 기준" \
+            --body "$(printf '%s\n' \
+              '한국부동산원 주간 아파트 매매가격지수 캐시를 갱신했다. 요구 승인이 0건이라 승인 없이 병합된다.' \
+              '' \
+              '화면·리포트 반영은 다음 월요일 `ingest.yml` 이 한다(리포트 06번 그림).' \
+              '' \
+              "실행: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"
+
+          gh pr merge "$BRANCH" --squash --delete-branch
+
+      - name: 결과 요약
+        if: always()
+        run: |
+          {
+            echo "### 가격 수집"
+            echo ""
+            sed -n 's/^\[ingest-price\] //p' /tmp/price.log 2>/dev/null | sed 's/^/- /'
+            echo ""
+            echo "- 캐시 변경: **${{ steps.diff.outputs.changed || 'false' }}**"
+          } >> "$GITHUB_STEP_SUMMARY"

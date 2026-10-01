@@ -255,6 +255,52 @@ input[type=range]{background:transparent}
 .rpt-axis{fill:var(--muted); font-family:var(--num); font-size:11px}
 .rpt-line{fill:none; stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round}
 .rpt-line--prov{stroke-dasharray:3 4}
+/* ── ⑥ 가격 (대시보드 화면) ─────────────────────── */
+#priceStrip{max-width:72rem;margin:18px auto 0;padding:16px clamp(14px,3vw,20px);
+  background:var(--bd-card,#161b24);border:1px solid var(--bd-line,rgba(232,236,242,.10));border-radius:12px}
+#priceStrip[hidden]{display:none}
+.ps-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.ps-head h2{font-size:15px;font-weight:800;letter-spacing:-.02em;margin:0}
+.ps-head #psStat{font-size:12px;font-weight:600;color:var(--bd-muted,#9AA4B5)}
+.ps-meta{font-size:11.5px;color:var(--bd-muted,#9AA4B5);margin:0}
+.ps-body{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:12px}
+.ps-hero{display:flex;align-items:baseline;gap:9px;min-width:210px}
+.ps-lab{font-size:12.5px;color:var(--bd-muted,#9AA4B5);font-weight:700}
+.ps-hero b{font-family:var(--bd-num);font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.ps-note{font-size:11px;color:var(--bd-muted,#9AA4B5)}
+.ps-zones{display:flex;gap:7px;flex-wrap:wrap;flex:1}
+.ps-zones .z{display:flex;align-items:baseline;gap:6px;padding:5px 9px;border-radius:7px;
+  border:1px solid var(--bd-line,rgba(232,236,242,.10))}
+.ps-zones .z i{font-style:normal;font-size:11.5px;color:var(--bd-muted,#9AA4B5)}
+.ps-zones .z b{font-family:var(--bd-num);font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.ps-more{margin-top:12px}
+.ps-more summary{cursor:pointer;font-size:12px;color:var(--bd-muted,#9AA4B5)}
+.ps-gu{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px}
+.ps-gu .g{display:flex;justify-content:space-between;gap:5px;padding:5px 8px;border-radius:6px;
+  background:rgba(255,255,255,.03);font-size:11.5px}
+.ps-gu .g b{font-family:var(--bd-num);font-weight:800;font-variant-numeric:tabular-nums}
+.ps-up{color:var(--bd-coral,#FF6B5E)} .ps-dn{color:var(--bd-blue,#6BA8FF)} .ps-flat{color:var(--bd-muted,#9AA4B5)}
+@media (max-width:760px){.ps-gu{grid-template-columns:repeat(3,1fr)}}
+
+/* ── ⑥ 가격 변동률 (리포트 시트) ───────────────── */
+.rpt-price-hero{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  padding:18px 0 14px;border-bottom:1px solid var(--line)}
+.rpt-price-lab{font-size:15px;color:var(--muted);font-weight:700}
+.rpt-price-val{font-family:var(--bd-num);font-size:44px;font-weight:800;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.rpt-price-note{font-size:13px;color:var(--muted)}
+.rpt-price-zones{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:14px 0}
+.rpt-price-zones .z{border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+.rpt-price-zones .z b{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:3px}
+.rpt-price-zones .z span{font-family:var(--bd-num);font-size:19px;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.rpt-price-gu{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:4px 0 14px}
+.rpt-price-gu .g{display:flex;justify-content:space-between;align-items:baseline;gap:6px;
+  padding:7px 9px;border-radius:6px;background:rgba(255,255,255,.028)}
+.rpt-price-gu .g i{font-style:normal;font-size:12.5px;color:var(--fg)}
+.rpt-price-gu .g span{font-family:var(--bd-num);font-size:13.5px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.rpt-up{color:var(--rise)} .rpt-dn{color:var(--fall)} .rpt-flat{color:var(--muted)}
 .rpt-dot{stroke:var(--paper); stroke-width:2}
 .rpt-slabel{font-family:var(--kr); font-size:13px; font-weight:700}
 .rpt-vlabel{font-family:var(--num); font-size:12px; font-weight:700; fill:var(--ink)}
@@ -598,6 +644,28 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
 
 <div id="dashView">
 
+<!-- ⑥ 가격 — 헤드라인(거래 건수) 바로 아래. 출처가 다르므로 섹션을 분리하고
+     기준일·출처를 섹션 안에 적는다. 패널 탭에 넣지 않은 이유: #v2Tab-price 가
+     이미 "금액대"(거래 금액대 구성)에 쓰이고 있어 이름이 겹친다. -->
+<section id="priceStrip" hidden aria-label="아파트 매매가격 변동률">
+  <div class="ps-head">
+    <h2>아파트 매매가격 <span id="psStat">주간 매매가격지수</span></h2>
+    <p class="ps-meta"><span id="psAsOf">—</span> · <span id="psSource">—</span></p>
+  </div>
+  <div class="ps-body">
+    <div class="ps-hero">
+      <span class="ps-lab">서울 전체</span>
+      <b id="psSeoul">—</b>
+      <span class="ps-note" id="psNote"></span>
+    </div>
+    <div class="ps-zones" id="psZones"></div>
+  </div>
+  <details class="ps-more">
+    <summary>자치구 25곳 보기</summary>
+    <div class="ps-gu" id="psGu"></div>
+  </details>
+</section>
+
 <!-- ②③ 지형도(왼쪽) + 상세 패널(오른쪽). 내용은 v2Move() 가 기존 노드를 옮겨 채운다. -->
 <div id="v2Stage">
   <div id="v2Left"></div>
@@ -935,6 +1003,33 @@ body[data-gran="week"] #yearFilterRow,body[data-gran="week"] #rangeRow{display:n
     <div class="rpt-legend" id="rptB5Legend"></div>
     <div class="rpt-foot">
       <p class="rpt-basis" id="rptBlock5Basis">—</p>
+    </div>
+  </div>
+
+  <!-- ⑥ 가격 변동률 — 거래 건수와 출처가 다르다(한국부동산원 주간 매매가격지수).
+       매주 고정으로 나간다. 파일명은 06.png 다(01~05 는 외부 사이트가 고정 참조). -->
+  <div class="rpt-sheet" id="rptBlock6">
+    <div class="rpt-head">
+      <div>
+        <h2>아파트 매매가격</h2>
+        <p class="rpt-sub" id="rptB6Sub">서울 · 권역 · 자치구 전주 대비</p>
+      </div>
+      <div class="rpt-meta">
+        <p class="rpt-period" id="rptBlock6Period">—</p>
+        <p class="rpt-flags">
+          <span class="rpt-count" id="rptBlock6Count">—</span>
+        </p>
+      </div>
+    </div>
+    <div class="rpt-price-hero">
+      <span class="rpt-price-lab">서울 전체</span>
+      <span class="rpt-price-val" id="rptB6Seoul">—</span>
+      <span class="rpt-price-note" id="rptB6Note"></span>
+    </div>
+    <div class="rpt-price-zones" id="rptB6Zones"></div>
+    <div class="rpt-price-gu" id="rptB6Gu"></div>
+    <div class="rpt-foot">
+      <p class="rpt-basis" id="rptBlock6Basis">—</p>
     </div>
   </div>
 </section>
@@ -2036,7 +2131,39 @@ function selectDistrict(district) {
 // ════════════════════════════════════════════════
 //  초기화
 // ════════════════════════════════════════════════
+/**
+ * ⑥ 가격 — 대시보드 화면. 기간 슬라이더와 무관한 "이번 주 하나짜리" 지표라
+ * renderAll 루프에 넣지 않고 로드 때 한 번만 그린다. 데이터가 없으면 섹션을 숨긴다.
+ */
+function renderPriceStrip() {
+  const el = document.getElementById('priceStrip');
+  const pr = RAW && RAW.report && RAW.report.price;
+  if (!el) return;
+  if (!pr || !pr.seoul) { el.hidden = true; return; }
+  el.hidden = false;
+
+  const cls = v => v > 0 ? 'ps-up' : v < 0 ? 'ps-dn' : 'ps-flat';
+  const fmt = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+  const $$ = id => document.getElementById(id);
+
+  $$('psStat').textContent = pr.statLabel;
+  // 기준일·출처는 data.js 가 만든 문구를 그대로 쓴다 — 화면에서 다시 쓰지 않는다.
+  $$('psAsOf').textContent = pr.asOfLabel;
+  $$('psSource').textContent = pr.sourceLabel;
+  const seoul = $$('psSeoul');
+  seoul.textContent = fmt(pr.seoul.pct);
+  seoul.className = cls(pr.seoul.pct);
+  $$('psNote').textContent = pr.stale
+    ? `이번 주 발표 없음 — ${pr.asOfLabel.split(' · ')[0]} 유지`
+    : `지수 ${pr.seoul.prevIndex.toFixed(2)} → ${pr.seoul.index.toFixed(2)}`;
+  $$('psZones').innerHTML = pr.zones.map(z =>
+    `<div class="z"><i>${z.name}</i><b class="${cls(z.pct)}">${fmt(z.pct)}</b></div>`).join('');
+  $$('psGu').innerHTML = pr.districts.map(g =>
+    `<div class="g"><span>${g.name}</span><b class="${cls(g.pct)}">${fmt(g.pct)}</b></div>`).join('');
+}
+
 setGranularity('month');
+renderPriceStrip();
 // ════════════════════════════════════════════════
 //  리포트 모드 (블록 ① 국평 신고가)
 //  데이터는 data.js 의 report 키. 계산은 ingest.mjs 의 buildReport 가 끝냈다.
@@ -2290,6 +2417,41 @@ function renderReport() {
   } else {
     rptHead('rptBlock5', m, '—', '데이터 없음', ['baseline', 'source']);
     rptHtml('rptB5Chart', '<p class="rpt-empty">추이 데이터가 없습니다.</p>');
+  }
+
+  // ⑥ 가격 — 출처가 다르다(한국부동산원). 거래 건수의 기준선·신고분 개념을 쓰지 않는다.
+  // 기준일과 출처는 data.js 의 asOfLabel / sourceLabel 을 그대로 쓴다(손으로 쓰지 않는다).
+  const pr = rep.price;
+  if (pr) {
+    const cls = v => v > 0 ? 'rpt-up' : v < 0 ? 'rpt-dn' : 'rpt-flat';
+    const fmt = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}%`;
+    rptSet('rptBlock6Period', pr.asOfLabel);
+    rptSet('rptBlock6Count', `자치구 ${pr.districts.length}곳`);
+    rptSet('rptB6Sub', `${pr.statLabel} · 서울 · 권역 · 자치구`);
+    const sEl = document.getElementById('rptB6Seoul');
+    sEl.textContent = fmt(pr.seoul.pct);
+    sEl.className = `rpt-price-val ${cls(pr.seoul.pct)}`;
+    rptSet('rptB6Note', pr.stale
+      ? `이번 주 발표 없음 — ${pr.asOfLabel}`
+      : `지수 ${pr.seoul.prevIndex.toFixed(2)} → ${pr.seoul.index.toFixed(2)}`);
+    rptHtml('rptB6Zones', pr.zones.map(z =>
+      `<div class="z"><b>${z.name}</b><span class="${cls(z.pct)}">${fmt(z.pct)}</span></div>`).join(''));
+    rptHtml('rptB6Gu', pr.districts.map(g =>
+      `<div class="g"><i>${g.name}</i><span class="${cls(g.pct)}">${fmt(g.pct)}</span></div>`).join(''));
+    // 각주 — 출처가 ①②③⑤(국토부)와 다르므로 전용 조각을 쓴다
+    rptSet('rptBlock6Basis', [
+      pr.asOfLabel,
+      '권역은 출처가 제공하는 권역 지수 기준 · 자치구 평균이 아님',
+      '변동률은 지수에서 계산 (금주 지수 ÷ 전주 지수 − 1)',
+      '정렬 상승폭 큰 순',
+      pr.sourceLabel,
+    ].join(' · '));
+  } else {
+    rptSet('rptBlock6Period', '—');
+    rptSet('rptBlock6Count', '캐시 없음');
+    rptHtml('rptB6Zones', '');
+    rptHtml('rptB6Gu', '<p class="rpt-empty">가격 캐시가 없습니다.</p>');
+    rptSet('rptBlock6Basis', '출처: 한국부동산원 주간 아파트 매매가격지수');
   }
 
   // ④ 정비사업 — 거래가 아니라 고시다. 신고분 개념이 없고 고시일로 자른다

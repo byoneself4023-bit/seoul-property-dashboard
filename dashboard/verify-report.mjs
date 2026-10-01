@@ -254,6 +254,56 @@ function checkCounts(rep) {
 }
 
 // ════════════════════════════════════════════════
+//  [가격] ⑥ 블록 — 지수에서 변동률을 다시 계산해 맞는지
+// ════════════════════════════════════════════════
+//
+// 이 블록만 출처가 다르다(한국부동산원). 원자료는 **지수**뿐이고 변동률은 우리가
+// 계산한 값이다 — 계산이 끼어 있으므로 표시값을 원값에서 되짚는다.
+// 캐시가 없어 price 가 null 인 주도 있다. 그때는 검사할 것이 없으므로 통과시킨다
+// (검사를 끄는 것이 아니라, 검사 대상이 없는 것이다).
+function checkPrice(rep) {
+  const p = rep.price;
+  if (!p) return 0;
+
+  if (!p.asOf || !/^\d{4}-\d{2}-\d{2}$/.test(p.asOf)) fail('가격', `⑥ 기준일이 없거나 형식이 아니다: ${p.asOf}`);
+  if (!p.prevAsOf || p.prevAsOf >= p.asOf) fail('가격', `⑥ 전주 기준일이 이번 주보다 뒤다: ${p.prevAsOf} → ${p.asOf}`);
+  if (!p.asOfLabel || !p.asOfLabel.includes('기준')) fail('가격', '⑥ 기준일 문구(asOfLabel)가 비었다');
+  if (!p.sourceLabel || !p.sourceLabel.includes('한국부동산원')) {
+    fail('가격', `⑥ 출처 문구에 기관명이 없다: ${p.sourceLabel}`);
+  }
+
+  const rows = [p.seoul, ...(p.zones ?? []), ...(p.districts ?? [])].filter(Boolean);
+  if (!p.seoul) fail('가격', '⑥ 서울 값이 없다');
+  if ((p.zones ?? []).length !== 7) fail('가격', `⑥ 권역이 7개가 아니다 (${(p.zones ?? []).length}개)`);
+  if ((p.districts ?? []).length !== 25) fail('가격', `⑥ 자치구가 25개가 아니다 (${(p.districts ?? []).length}개)`);
+
+  for (const r of rows) {
+    if (!(r.index > 0) || !(r.prevIndex > 0)) {
+      fail('가격', `⑥ ${r.name} 지수가 비었다 (${r.prevIndex} → ${r.index})`); continue;
+    }
+    const again = Number(((r.index / r.prevIndex - 1) * 100).toFixed(2));
+    if (again !== r.pct) {
+      fail('가격', `⑥ ${r.name} 변동률이 지수와 맞지 않는다 — 표시 ${r.pct}%, 재계산 ${again}%`);
+    }
+    // 주간 변동률이 ±5% 를 넘으면 지수 자리수나 주차 짝이 어긋난 것이다
+    if (Math.abs(r.pct) > 5) fail('가격', `⑥ ${r.name} 변동률 ${r.pct}% — 주간 값으로 비정상`);
+  }
+
+  // 권역을 자치구 평균으로 만들지 않았는지. 출처는 가중 지수라 단순평균과 다르다.
+  // 전부 소수점까지 똑같으면 평균으로 만든 것이다.
+  const gu = Object.fromEntries((p.districts ?? []).map(d => [d.name, d.pct]));
+  const EAST = ['서초구', '강남구', '송파구', '강동구'];
+  const dong = (p.zones ?? []).find(z => z.name === '동남권');
+  if (dong && EAST.every(n => gu[n] !== undefined)) {
+    const avg = Number((EAST.reduce((a, n) => a + gu[n], 0) / EAST.length).toFixed(2));
+    if (avg === dong.pct && Math.abs(avg) > 0.005) {
+      fail('가격', `⑥ 동남권(${dong.pct}%)이 자치구 단순평균과 같다 — 출처 권역 지수를 써야 한다`);
+    }
+  }
+  return rows.length;
+}
+
+// ════════════════════════════════════════════════
 //  [값] 표시된 여섯 필드가 원본 거래 한 건과 같은가
 // ════════════════════════════════════════════════
 // 오염 검사는 다섯 필드로 후보를 찾을 뿐 층은 보지 않는다. 층이 어긋나면 같은 날
@@ -428,6 +478,7 @@ export function verifyReport() {
   const selected = checkSelection(rep, cache);
   checkPct(rep);
   const cells = checkTrend(rep, cache);
+  const priceRows = checkPrice(rep);
 
   const shown = displayedRows(rep).length;
   if (problems.length) {
@@ -447,6 +498,10 @@ export function verifyReport() {
   console.log(`  [상승률] 표시 ${shown}건의 상승률이 화면의 두 금액과 나눗셈으로 일치`);
   console.log(`  [추이] 월별 ${cells}칸을 캐시에서 다시 세어 원소 단위 일치, ` +
               `진행 중인 당월 미포함, 합계가 ②③ 집계 이내`);
+  console.log(priceRows
+    ? `  [가격] ⑥ ${priceRows}개 지역(서울1·권역7·자치구25)의 변동률을 지수에서 재계산해 일치, ` +
+      `기준일(${rep.price.asOf})·출처 문구 있음, 권역이 자치구 평균 아님`
+    : `  [가격] ⑥ 가격 블록 없음 — 검사 대상 없음`);
   return true;
 }
 

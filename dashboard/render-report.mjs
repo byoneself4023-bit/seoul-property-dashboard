@@ -30,6 +30,10 @@ const WEEKLY_BLOCKS = [
   { id: 'rptBlock2', file: '매주/02-거래1위.png',      slot: '02' },
   { id: 'rptBlock3', file: '매주/03-비아파트.png',     slot: '03' },
   { id: 'rptBlock5', file: '매주/04-거래량추이.png',   slot: '04' },
+  // 06 = 가격 변동률(한국부동산원). **매주 고정**이고 05 와 번호가 겹치지 않는다 —
+  // 05 는 정비사업 전용이고 외부 사이트가 01~05 를 하드코딩으로 걸고 있어
+  // 재배치할 수 없다. 그래서 새 그림은 05 가 아니라 06 이다.
+  { id: 'rptBlock6', file: '매주/06-가격변동률.png',   slot: '06' },
 ];
 const REBUILD_BLOCK = { id: 'rptBlock4', file: '월간/정비사업.png', slot: '05' };
 
@@ -50,13 +54,25 @@ async function render() {
   if (!hasReport) throw new Error('data.js 에 report 가 없다 — 수집을 먼저 실행하라');
 
   // ⑤ 정비사업을 이번에 낼지. 판정은 ingest.mjs 가 직전 data.js 와 대조해 남긴다.
+  // ⑥ 가격 — 매주 고정이지만 캐시가 없으면 블록이 비어 있다. 그때는 렌더하지 않는다
+  // (빈 그림을 내보내느니 그 주는 빠지는 편이 낫다). manifest 가 사실을 알린다.
+  const price = await page.evaluate(() => {
+    const p = window.__DASHBOARD_DATA__?.report?.price;
+    return p ? { asOf: p.asOf, prevAsOf: p.prevAsOf, sourceLabel: p.sourceLabel,
+                 stale: !!p.stale, seoulPct: p.seoul?.pct ?? null } : null;
+  });
+
   const rebuild = await page.evaluate(() => {
     const r = window.__DASHBOARD_DATA__?.report?.rebuild;
     return r ? { changed: !!r.changed, news: r.counts?.news ?? 0, cancels: r.counts?.cancels ?? 0,
                  signature: r.signature ?? null } : null;
   });
   const includeRebuild = !!(rebuild && rebuild.changed);
-  const BLOCKS = includeRebuild ? [...WEEKLY_BLOCKS, REBUILD_BLOCK] : WEEKLY_BLOCKS;
+  const weekly = price ? WEEKLY_BLOCKS : WEEKLY_BLOCKS.filter(b => b.slot !== '06');
+  if (!price) console.log('  ⑥ 가격 생략 — 가격 캐시가 없다');
+  else console.log(`  ⑥ 가격 포함 — ${price.asOf} 기준 · 서울 ${price.seoulPct >= 0 ? '+' : ''}${price.seoulPct}%`
+                   + (price.stale ? ' (이번 주 발표 없음 — 직전 기준 유지)' : ''));
+  const BLOCKS = includeRebuild ? [...weekly, REBUILD_BLOCK] : weekly;
   console.log(includeRebuild
     ? `  ⑤ 정비사업 포함 — 신규 ${rebuild.news} / 해제 ${rebuild.cancels} (직전 수집 대비 변경 있음)`
     : `  ⑤ 정비사업 생략 — ${rebuild ? '직전 수집 대비 변경 없음' : '정비사업 데이터 없음'}`);
@@ -107,7 +123,13 @@ async function render() {
     date: generatedAt,
     rebuildIncluded: includeRebuild,
     rebuild: rebuild ? { news: rebuild.news, cancels: rebuild.cancels } : null,
-    slots: saved.map(s => s.slot),
+    slots: saved.map(s => s.slot).sort(),
+    // 뒤따르는 작업(블로그 글·알림·쇼츠)이 읽는 창구는 이 파일 하나다.
+    // 별도 알림 시스템을 두지 않는다 — 여기에 사실을 다 적는다.
+    price: price ? {
+      asOf: price.asOf, prevAsOf: price.prevAsOf, sourceLabel: price.sourceLabel,
+      stale: price.stale, seoulPct: price.seoulPct, slot: '06',
+    } : null,
     // ingest.mjs 의 readLastPublishedRebuildSignature() 가 읽는다. 사람이 보는 값이 아니다.
     lastPublishedRebuildSignature,
     note: includeRebuild
