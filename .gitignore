@@ -216,6 +216,11 @@ data.json
 # (2026-09-30 이전에는 로컬 수동 수집이었다).
 !dashboard/.cache/rebuild/
 !dashboard/.cache/rebuild/**
+# 가격 캐시(주차당 ~20KB)도 추적한다. 이유는 위 두 캐시와 같다 — 러너가 수집하고
+# 로컬이 같은 것을 봐야 한다. 주간 지수는 확정 후 바뀌지 않으므로 주차 파일이
+# 그대로 쌓인다(연 52개). 2026-10-01 부터.
+!dashboard/.cache/price/
+!dashboard/.cache/price/**
 
 # 훅 상태 파일 (검증 재시도 카운터·로그)
 .claude/.state/

@@ -30,6 +30,10 @@ script 태그를 쓰는 이유는 `file://`로 열어도 동작하게 하기 위
   - `ingest-rebuild.yml` — **정비사업 수집**. 매월 2일 05:00 KST(`cron '0 20 1 * *'` UTC)
     + 수동 실행. `.cache/rebuild/` 만 갱신하고 PR 로 병합한다. 화면 반영은 다음
     월요일 `ingest.yml` 의 몫이다(발행을 직접 부르지 않는다)
+  - `ingest-price.yml` — **가격 수집**. 한국부동산원 R-ONE 주간 아파트 매매가격지수.
+    목 15:00 / 목 21:00 / 금 09:00 KST 세 번(`0 6 * * 4`, `0 12 * * 4`, `0 0 * * 5` UTC).
+    발표가 늦거나 예약이 밀려도 그 주를 놓치지 않으려는 그물이다 — 이미 받았거나
+    아직 발표 전이면 아무것도 바꾸지 않고 **정상 종료**한다. `.cache/price/` 만 갱신
   - `report.yml` — **리포트 PNG**. cron 없음. `ingest.yml` 이 부르거나 수동 실행.
     장수가 고정이 아니다 — 매주 4장, 정비사업(05)은 새 지정·해제가 생긴 수집에만
 - `.github/claude-ci-settings.json` — CI 전용 permissions. `ask`를 두지 않는다
@@ -101,6 +105,21 @@ npm run verify                       # puppeteer UI 품질 게이트
   둔다 — 회사 사이트(`~/barun-realestate-site/index.html`)가 이 주소를 `<img>` 와
   다운로드 링크로 직접 걸고 있어 지우면 깨진 이미지가 뜬다. 그 주 산출물인지는
   `reports/latest/manifest.json` 의 `rebuildIncluded` 와 `date` 로 판정한다.
+- **가격(⑥)의 출처 교체 지점은 `dashboard/ingest-price.mjs` 하나다.** 주간 통계는
+  폐지·개편 논의가 있어(2026-06~07 보도) 출처가 바뀔 수 있다. 그 파일은 "출처에서
+  지수를 받아 오는 일"만 하고 `{asOf, prevAsOf, source, index:{지역:{cur,prev,path}}}`
+  라는 **출처 중립 형태**만 내보낸다. 변동률 계산·화면 가공은 `ingest.mjs` 의
+  `buildPriceBlock()` 이 한다. 갈아 끼울 때 `ingest-price.mjs` 만 새로 쓴다.
+- **가격 변동률은 지수에서 계산한다.** 출처가 변동률을 주지 않는다. 2026-09-30 검증:
+  두 주(202637→38, 202638→39) × 25개 구 전부 공식 발표와 일치했다.
+  **권역은 출처가 주는 권역 지수로 계산한다 — 자치구 평균을 쓰면 안 된다**
+  (출처는 가중 지수라 단순평균과 최대 0.054%p 어긋난다). `verify-report.mjs` 가 막는다.
+- **R-ONE 식별자는 상수로 두되 수집 때 검증한다.** `STATBL_ID=T244183132827305`,
+  `ITM_ID=10001`, 서울 CLS_ID 33개. 수집 시작에 `SttsApiTblItm.do` 로 대조해
+  하나라도 어긋나면 **예외를 던져 실패시킨다.** 사이트 내부 주소(`easyStatList.do`)는
+  쓰지 않는다 — 문서가 없고 예고 없이 바뀐다.
+- **리포트 06 은 가격이다.** 01~05 는 외부 사이트가 하드코딩으로 걸고 있어 번호를
+  재배치할 수 없다. 그래서 새 그림은 05 가 아니라 06 이다.
 - **④ 변경 판정의 기준선은 `manifest.json` 의 `lastPublishedRebuildSignature` 다.**
   직전 `data.js` 와 비교하면 안 된다 — 수집이 `changed:true` 인 `data.js` 를 먼저
   커밋하고 그다음 `report.yml` 을 부르므로, 렌더가 실패하면 다음 수집이 같은 지문끼리

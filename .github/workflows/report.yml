@@ -13,7 +13,10 @@
 #
 # 산출 구조 (dashboard/reports/, git 추적):
 #   reports/<수집일 YYYY-MM-DD>/01.png~0N.png  — 날짜별 누적, 지난주 것은 지우지 않는다
-#   reports/latest/01.png~05.png               — 고정 경로
+#   reports/latest/01.png~06.png               — 고정 경로
+#   06 = 가격 변동률(한국부동산원 주간 매매가격지수). 매주 고정.
+#        05 가 아니라 06 인 이유: 외부 사이트가 01~05 를 하드코딩으로 걸고 있어
+#        번호를 재배치할 수 없다.
 #   reports/latest/manifest.json               — 이번 발행에 무엇이 들어갔는지
 #
 # **05 가 없는 주에도 latest/05.png 를 지우지 않는다.** 회사 사이트가 이 주소를
@@ -86,6 +89,16 @@ jobs:
           cp "dashboard/out/매주/04-거래량추이.png"   "$DEST/04.png"
           cp "$DEST"/01.png "$DEST"/02.png "$DEST"/03.png "$DEST"/04.png \
              dashboard/reports/latest/
+
+          # 06 = 가격 변동률(한국부동산원). 매주 고정이지만 가격 캐시가 없으면
+          # 렌더되지 않는다 — 그때는 manifest 의 price 가 null 이다.
+          if [ -f "dashboard/out/매주/06-가격변동률.png" ]; then
+            cp "dashboard/out/매주/06-가격변동률.png" "$DEST/06.png"
+            cp "$DEST/06.png" dashboard/reports/latest/06.png
+            echo "⑥ 가격 포함 — $DEST/06.png 생성"
+          else
+            echo "⑥ 가격 미포함 — 가격 캐시 없음"
+          fi
 
           # ⑤ 는 새 지정·해제가 생겼을 때만 만들어진다.
           # 없는 주에는 latest/05.png 를 **건드리지 않는다** — 위 헤더의 이유.

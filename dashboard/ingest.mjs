@@ -12,6 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, readdirSync } from 'node:fs';
 import * as rebuildApi from './ingest-rebuild.mjs';
+import * as priceApi from './ingest-price.mjs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -1196,6 +1197,75 @@ export function rebuildSignature(block) {
 }
 
 /**
+ * ⑥ 가격 — 한국부동산원 주간 아파트 매매가격지수.
+ *
+ * **출처 교체 지점은 ingest-price.mjs 하나다.** 여기는 그 파일이 내보내는
+ * 출처 중립 형태(`{asOf, prevAsOf, source, index:{지역:{cur,prev,path}}}`)만 받는다.
+ * 다른 자료로 갈아 끼울 때 이 함수는 손대지 않는다.
+ *
+ * 변동률은 출처가 주지 않는다 — 지수에서 계산한다. 2026-09-30 검증:
+ * 202638→202639 과 202637→202638 두 주, 25개 구 전부 공식 발표와 일치했다.
+ * **권역은 출처가 주는 권역 지수로 계산한다.** 구 값을 평균 내면 안 된다 —
+ * 출처는 가중 지수라 단순평균과 최대 0.054%p 어긋난다.
+ */
+export function buildPriceBlock(neutral) {
+  if (!neutral || !neutral.index || !neutral.index['서울']) return null;
+
+  const pct = v => (v && v.prev) ? Number(((v.cur / v.prev - 1) * 100).toFixed(2)) : null;
+  const one = (name) => {
+    const v = neutral.index[name];
+    if (!v) return null;
+    return { name, index: v.cur, prevIndex: v.prev, pct: pct(v) };
+  };
+  // 계층은 출처의 CLS_FULLNM 이 정한다. 우리가 구를 권역에 손으로 묶지 않는다.
+  const depth = name => ((neutral.index[name]?.path ?? '').match(/>/g) || []).length;
+  const names = Object.keys(neutral.index);
+  const zones = names.filter(n => depth(n) === 1 || depth(n) === 2).map(one).filter(Boolean);
+  const districts = names.filter(n => depth(n) === 3).map(one).filter(Boolean);
+
+  // 권역은 출처 순서(강북지역>도심권>동북권>서북권 / 강남지역>서남권>동남권)를 따른다.
+  const zoneOrder = ['강북지역', '도심권', '동북권', '서북권', '강남지역', '서남권', '동남권'];
+  zones.sort((a, b) => zoneOrder.indexOf(a.name) - zoneOrder.indexOf(b.name));
+  districts.sort((a, b) => b.pct - a.pct);   // 상승 큰 순
+
+  const d = s => s ? `${Number(s.slice(5, 7))}월 ${Number(s.slice(8, 10))}일` : '';
+  // 명절 주처럼 발표가 없으면 직전 주 값이 그대로 남는다. 실패시키지 않고
+  // "이번 주 것이 아니다"를 데이터에 적어 화면·manifest 가 같은 말을 하게 한다.
+  const expected = priceApi.expectedAsOf();
+  const stale = neutral.asOf < expected;
+  return {
+    stale,
+    expectedAsOf: expected,
+    stateText: priceApi.describeState(neutral.asOf, expected).text,
+    asOf: neutral.asOf,
+    prevAsOf: neutral.prevAsOf,
+    weekId: neutral.weekId,
+    // 화면·그림이 그대로 쓰는 문구. 손으로 쓰지 않는다.
+    asOfLabel: `${d(neutral.asOf)} 기준 · 전주(${d(neutral.prevAsOf)}) 대비`,
+    sourceLabel: neutral.source?.label ?? '출처: 한국부동산원',
+    sourceName: neutral.source?.name ?? '한국부동산원',
+    statLabel: neutral.source?.stat ?? '주간 아파트 매매가격지수',
+    seoul: one('서울'),
+    zones,
+    districts,
+  };
+}
+
+/**
+ * 가격 캐시를 읽는다. 없으면 null — ⑥ 블록만 비고 나머지는 정상 동작한다.
+ * 캐시는 ingest-price.yml 이 주 1회(+늦어질 때를 대비해 같은 주에 두 번 더) 갱신한다.
+ */
+export function loadPriceCache() {
+  try {
+    const cache = priceApi.loadLatestCached();
+    return priceApi.toNeutral(cache);
+  } catch (err) {
+    console.warn(`  [경고] 가격 캐시를 읽지 못했다 — ⑥ 건너뜀: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * **④ 변경 판정의 기준선** — 마지막으로 리포트 ⑤ 를 실제로 발행했을 때의 지문.
  * render-report.mjs 가 `reports/latest/manifest.json` 에 남긴다.
  *
@@ -1253,7 +1323,7 @@ export function loadRebuildCache() {
  * @param {Object|null} confirm  buildConfirmBlock() 결과. 없으면 잠정 구간을 0으로 둔다
  */
 export function buildReport(rawByDistrict, rebuild, deltaSince = null, confirm = null,
-                            prevRebuildSig = null) {
+                            prevRebuildSig = null, priceNeutral = null) {
   const aptRows = reportRows(rawByDistrict, ['apt']);
   const rhRows  = reportRows(rawByDistrict, ['rh']);
   const offiRows = reportRows(rawByDistrict, ['offi']);
@@ -1307,6 +1377,8 @@ export function buildReport(rawByDistrict, rebuild, deltaSince = null, confirm =
                       confirm ? confirm.provisionalMonths : 0),
     // 확정 / 신고 진행 중 판정. 화면의 헤드라인·빗금·잠정 문구가 전부 이걸 읽는다.
     confirm,
+    // ⑥ 가격 — 한국부동산원 주간 매매가격지수. 캐시가 없으면 null 이고 나머지는 정상이다.
+    price: buildPriceBlock(priceNeutral),
   };
 }
 
@@ -2529,8 +2601,9 @@ async function main() {
   // 지문은 data.js 를 덮어쓰기 **전에** 읽어야 한다.
   const baseline = pickRebuildBaseline(
     readLastPublishedRebuildSignature(), readPrevRebuildSignature());
+  const priceNeutral = loadPriceCache();
   normalized.report = buildReport(
-    rawByDistrict, loadRebuildCache(), readPrevGeneratedAt(), confirm, baseline.sig);
+    rawByDistrict, loadRebuildCache(), readPrevGeneratedAt(), confirm, baseline.sig, priceNeutral);
   const rep = normalized.report;
   console.log(
     `[ingest] 리포트 집계 — 기준선 ${rep.meta.baselineLabel}, 신고분 ${rep.meta.targetCount}건\n` +
@@ -2538,7 +2611,8 @@ async function main() {
     `           ③ 연립다세대 신고가 ${rep.nonApt.rh.counts.high} / 오피스텔 ${rep.nonApt.offi.counts.high}\n` +
     `           ④ 정비사업 ${rep.rebuild ? `신규 ${rep.rebuild.counts.news} / 해제 ${rep.rebuild.counts.cancels} — ${rep.rebuild.changed ? '변경 있음 → ⑤ 발행' : '변경 없음 → ⑤ 생략'}` : '캐시 없음 — 건너뜀'}\n` +
     `           확정월 ${confirm.monthLabel ?? '없음'} · 잠정 ${confirm.provisionalMonths}개월 / ${confirm.provisionalWeeks}주\n` +
-    `           ④ 기준선 출처: ${baseline.from}`
+    `           ④ 기준선 출처: ${baseline.from}\n` +
+    `           ⑥ 가격 ${rep.price ? `${rep.price.asOfLabel} · 서울 ${rep.price.seoul.pct >= 0 ? '+' : ''}${rep.price.seoul.pct}% (${rep.price.sourceName})` : '캐시 없음 — 건너뜀'}`
   );
 
   console.log('[ingest] data.js 및 data.json 저장 중...');
