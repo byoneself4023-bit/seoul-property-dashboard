@@ -30,12 +30,20 @@ script 태그를 쓰는 이유는 `file://`로 열어도 동작하게 하기 위
   - `ingest-rebuild.yml` — **정비사업 수집**. 매월 2일 05:00 KST(`cron '0 20 1 * *'` UTC)
     + 수동 실행. `.cache/rebuild/` 만 갱신하고 PR 로 병합한다. 화면 반영은 다음
     월요일 `ingest.yml` 의 몫이다(발행을 직접 부르지 않는다)
-  - `ingest-price.yml` — **가격 수집**. 한국부동산원 R-ONE 주간 아파트 매매가격지수.
-    목 15:00 / 목 21:00 / 금 09:00 KST 세 번(`0 6 * * 4`, `0 12 * * 4`, `0 0 * * 5` UTC).
-    발표가 늦거나 예약이 밀려도 그 주를 놓치지 않으려는 그물이다 — 이미 받았거나
-    아직 발표 전이면 아무것도 바꾸지 않고 **정상 종료**한다. `.cache/price/` 만 갱신
-  - `report.yml` — **리포트 PNG**. cron 없음. `ingest.yml` 이 부르거나 수동 실행.
-    장수가 고정이 아니다 — 매주 4장, 정비사업(05)은 새 지정·해제가 생긴 수집에만
+  - `ingest-price.yml` — **가격 수집 + ⑥ 반영**. 한국부동산원 R-ONE 주간 아파트
+    매매가격지수. 목 15:00 / 목 21:00 / 금 09:00 KST 세 번(`0 6 * * 4`,
+    `0 12 * * 4`, `0 0 * * 5` UTC). 발표가 늦거나 예약이 밀려도 그 주를 놓치지
+    않으려는 그물이다 — 아직 발표 전이면 아무것도 바꾸지 않고 **정상 종료**한다.
+    `.cache/price/` 를 갱신한 뒤 **`ingest.mjs --price-only` 로 `data.js` 의 가격
+    블록만 갈아 넣고**, 캐시·`data.js`·`dashboard.html` 을 한 PR 로 병합한 다음
+    `report.yml` 을 불러 **06번 그림만** 다시 그린다(2026-10-09, PR #60).
+    거래량과 `generatedAt` 은 건드리지 않는다 — RTMS 를 부르지 않는다.
+    주입은 **캐시가 바뀌었는지와 무관하게 늘 돈다**(아래 규칙 참조)
+  - `report.yml` — **리포트 PNG**. cron 없음. `ingest.yml`(월) 과
+    `ingest-price.yml`(목) 이 부르거나 수동 실행. 장수가 고정이 아니다 —
+    매주 4장, 정비사업(05)은 새 지정·해제가 생긴 수집에만, 가격(06)은 매주.
+    목요일 호출에서는 06 만 바뀐다 — ①~⑤ 는 같은 `data.js` 를 읽어 PNG 가
+    바이트까지 같아 커밋 diff 에 잡히지 않는다(2026-10-09 실측, PR #62)
 - `.github/claude-ci-settings.json` — CI 전용 permissions. `ask`를 두지 않는다
   (CI엔 물어볼 사람이 없어 ask가 곧 거부가 된다). 훅 3개는 로컬과 동일하게 싣는다
 - `docs/` — 기술 조사·작업 기록. 사업·기획 문서는 넣지 않는다(아래 참조)
@@ -46,11 +54,13 @@ script 태그를 쓰는 이유는 `file://`로 열어도 동작하게 하기 위
 node dashboard/ingest.mjs            # 수집 (캐시 활용). RTMS_SERVICE_KEY 필요
 node dashboard/ingest.mjs --fresh    # 캐시 무시 전체 재수집
 node dashboard/ingest.mjs --selftest # 픽스처로 파이프라인 검증
+npm run price-only                   # ⑥ 가격만 data.js 에 다시 주입 (키 불필요)
 sh dashboard/scripts/deploy.sh       # 두 파일 커밋·푸시 후 라이브 반영 검증
 npm run verify                       # puppeteer UI 품질 게이트
 ```
 
-자동 실행: **GitHub Actions `ingest.yml`**, 매주 월 07:00 KST. 로컬 LaunchAgent
+자동 실행: **GitHub Actions `ingest.yml`**, 매주 월 07:00 KST(거래량 전체).
+가격만 목요일에 `ingest-price.yml` 이 따로 돈다. 로컬 LaunchAgent
 `com.kuka.dashboard-ingest`는 2026-08-13 이관과 함께 내렸다(plist 는 `.disabled` 로
 남겨 뒀다 — 되돌리는 법은 `docs/자동화-구축.md`).
 
@@ -120,6 +130,40 @@ npm run verify                       # puppeteer UI 품질 게이트
   쓰지 않는다 — 문서가 없고 예고 없이 바뀐다.
 - **리포트 06 은 가격이다.** 01~05 는 외부 사이트가 하드코딩으로 걸고 있어 번호를
   재배치할 수 없다. 그래서 새 그림은 05 가 아니라 06 이다.
+- **⑥ 만 따로 넣는 길은 `ingest.mjs --price-only` 하나다**(2026-10-09 신설).
+  가격 발표는 목요일 14시고 거래량 수집은 월요일이다. 목요일에 `ingest.yml` 전체를
+  부르면 RTMS 를 수천 건 다시 받고 거래량 숫자까지 주중에 바뀐다 — 주간 뉴스가 읽는
+  ①~⑤ 가 월요일 것과 달라진다. `--price-only` 는 `data.js` 를 되읽어 `report.price`
+  한 블록만 갈아 끼우고 `inject()` 로 다시 쓴다. `generatedAt` 과 ①~⑤ 는 그대로다.
+  **`refreshPriceOnly()` 는 동기 함수다 — 네트워크를 탈 수 없고 `RTMS_SERVICE_KEY` 도
+  필요 없다.** 비동기로 바꾸지 말 것. 그 동기성이 "목요일에 거래량이 안 흔들린다" 의
+  근거이고, 워크플로가 그 단계에 키를 넘기지 않는 이유다.
+  손으로 돌릴 때는 `npm run price-only`. 멱등하다 — 캐시 주차가 이미 `data.js` 에
+  실린 주차와 같으면 아무것도 쓰지 않는다. 다만 **로컬 실행분은 커밋하지 않는다**
+  (위 "수집은 러너가 한다" 와 같은 규칙). 러너가 만든 것과 바이트까지 같다.
+- **목요일 주입은 캐시가 바뀌었는지와 무관하게 늘 돌린다.** 조건을 걸면 안 되는
+  이유가 둘이다. (1) 캐시는 병합됐는데 주입 단계가 죽은 회차가 생기면, 조건부로는
+  캐시가 더 바뀌지 않는 한 영영 다시 잡히지 않는다 — 캐시와 `data.js` 가 어긋난 채
+  남고 그 사이 `report.yml` 은 아래 캐시 대조 검사에 걸려 계속 실패한다.
+  (2) 이미 받아 둔 주차를 화면에 밀어 넣는 것이 사람이 이 워크플로를 손으로 돌리는
+  주된 이유다. 실제로 2026-10-09 첫 수동 실행이 (1) 의 상황("캐시 변경 없음" +
+  화면은 한 주 전)이었고 늘 도는 주입이 그것을 잡았다. 공짜다 — API 를 부르지 않는다.
+  **캐시와 `data.js` 는 한 PR 로 넣는다.** 나누면 (1) 의 창이 생긴다.
+- **`checkPrice()` 는 ⑥ 의 기준일을 가격 캐시의 가장 최근 주와 대조한다.**
+  없으면 안 되는 이유: 한 주 묵은 조사분이 그림으로 나가도 **그 두 주차끼리 계산은
+  맞아서** 변동률 재계산 검사가 전부 통과한다. 숫자가 다 맞는데 주가 틀린 것은
+  캐시와 직접 대보지 않으면 잡을 방법이 없다. 이 검사가 목요일 주입이 빠진 회차를
+  발행 전에 세운다(`verify-report` 실패 → PNG 도 발행도 안 나간다).
+- **목요일 06 은 새 폴더를 만들지 않고 그 주 월요일 폴더를 덮어쓴다.** 폴더 이름은
+  `manifest.date` = `data.js` 의 `generatedAt`(거래량 수집일)이고 `--price-only` 가
+  그 값을 건드리지 않기 때문이다. 가격 기준일이 바뀐 사실은 `manifest.json` 의
+  `price.asOf` 가 알린다 — `date` 는 거래량 수집일로 두고 `asOf` 만 그 주 조사일로
+  올라간다. 받는 쪽(`Shorts_Automation`)은 그 둘을 따로 읽는다.
+- **월요일 흐름은 이 변경으로 바뀌지 않았다.** `ingest.yml`·`report.yml`·`pages.yml`·
+  `render-report.mjs` 무변경이고 `ingest.mjs` 의 `main()` 본문에도 손대지 않았다
+  (추가분은 전부 `main()` 밖이다). 월요일 전체 수집은 같은 캐시에서 ⑥ 를 다시
+  만들므로 목요일에 넣은 값과 같은 값이 나온다 — 가격이 월요일에 번복되지 않는다.
+  확인법은 `dashboard/research/목요일-가격반영-보고.md`(gitignored, 로컬) 에 있다.
 - **④ 변경 판정의 기준선은 `manifest.json` 의 `lastPublishedRebuildSignature` 다.**
   직전 `data.js` 와 비교하면 안 된다 — 수집이 `changed:true` 인 `data.js` 를 먼저
   커밋하고 그다음 `report.yml` 을 부르므로, 렌더가 실패하면 다음 수집이 같은 지문끼리
