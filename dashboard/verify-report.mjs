@@ -15,11 +15,13 @@
  *   [선별] 신고가로 표시된 건이 실제로 그 단지 그 평형의 기록을 깼는가 (재계산 대조)
  *   [상승률] 화면에 찍힌 두 금액으로 그 비율이 실제로 나오는가
  *   [추이] 월별 건수가 캐시 재계산과 원소 단위로 같은가 (당월 혼입 포함)
+ *   [가격] ⑥ 변동률이 지수와 맞는가, 그리고 **가격 캐시의 가장 최근 주를 그리고 있는가**
  */
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
+import * as priceApi from './ingest-price.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = join(__dirname, '.cache', 'ingest');
@@ -289,6 +291,20 @@ function checkPrice(rep) {
     if (Math.abs(r.pct) > 5) fail('가격', `⑥ ${r.name} 변동률 ${r.pct}% — 주간 값으로 비정상`);
   }
 
+  // **캐시의 가장 최근 주를 그리고 있는가.**
+  // ⑥ 는 월요일 전체 수집뿐 아니라 목요일 가격 수집(ingest-price.yml →
+  // ingest.mjs --price-only)에도 갱신된다. 그 재주입이 빠지면 한 주 묵은 조사분이
+  // 그림으로 나가는데, 위의 재계산 검사는 **전부 통과한다** — 묵은 두 주차끼리
+  // 계산이 맞기 때문이다. 캐시와 대조하지 않으면 잡을 방법이 없다.
+  const latest = priceApi.toNeutral(priceApi.loadLatestCached());
+  if (!latest) {
+    fail('가격', '⑥ 블록은 있는데 가격 캐시를 읽지 못했다 — .cache/price 를 확인하라');
+  } else if (latest.weekId !== p.weekId || latest.asOf !== p.asOf) {
+    fail('가격', `⑥ 기준일이 캐시의 최신 주와 다르다 — 그림 ${p.asOf}(${p.weekId}), ` +
+                 `캐시 ${latest.asOf}(${latest.weekId}). ` +
+                 '`node dashboard/ingest.mjs --price-only` 로 data.js 에 다시 넣어라');
+  }
+
   // 권역을 자치구 평균으로 만들지 않았는지. 출처는 가중 지수라 단순평균과 다르다.
   // 전부 소수점까지 똑같으면 평균으로 만든 것이다.
   const gu = Object.fromEntries((p.districts ?? []).map(d => [d.name, d.pct]));
@@ -500,7 +516,7 @@ export function verifyReport() {
               `진행 중인 당월 미포함, 합계가 ②③ 집계 이내`);
   console.log(priceRows
     ? `  [가격] ⑥ ${priceRows}개 지역(서울1·권역7·자치구25)의 변동률을 지수에서 재계산해 일치, ` +
-      `기준일(${rep.price.asOf})·출처 문구 있음, 권역이 자치구 평균 아님`
+      `기준일(${rep.price.asOf})이 캐시 최신 주와 동일, 출처 문구 있음, 권역이 자치구 평균 아님`
     : `  [가격] ⑥ 가격 블록 없음 — 검사 대상 없음`);
   return true;
 }

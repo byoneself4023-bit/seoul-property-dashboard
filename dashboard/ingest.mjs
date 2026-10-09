@@ -5,6 +5,7 @@
  *   RTMS_SERVICE_KEY=<키> node ingest.mjs           # 실 데이터 수집 (캐시 활용)
  *   RTMS_SERVICE_KEY=<키> node ingest.mjs --fresh   # 캐시 무시, 전체 재수집
  *   node ingest.mjs --selftest                      # 로컬 픽스처로 파이프라인 검증
+ *   node ingest.mjs --price-only                    # ⑥ 가격만 data.js 에 다시 주입(거래량 손대지 않음)
  *
  * 환경 변수:
  *   RTMS_SERVICE_KEY  공공데이터포털 API 인증키 (URL-encoded 없는 원문)
@@ -1156,6 +1157,19 @@ export function buildReportMeta(deltaCount, deltaSince = null) {
     lagNote: '신고 기한은 계약 후 30일이지만 그보다 늦게 들어오는 거래도 있다',
     deltaLimit: `재수집 범위가 최근 ${RECENT_REFETCH_MONTHS}개월이라 신고 지연이 그보다 긴 거래는 잡히지 않는다`,
   };
+}
+
+/**
+ * 직전 data.js 를 객체로 되읽는다. inject() 가 쓴 형태만 받아들인다.
+ * verify-report.mjs 의 loadData() 와 같은 정규식을 일부러 다시 적는다 —
+ * 두 파일은 서로를 import 하지 않는다(검증기가 수집기에 의존하면 안 된다).
+ * 없거나 형태가 다르면 null.
+ */
+export function readPrevData(jsPath = join(__dirname, 'data.js')) {
+  try {
+    const m = readFileSync(jsPath, 'utf8').match(/window\.__DASHBOARD_DATA__ = ([\s\S]*);\n$/);
+    return m ? JSON.parse(m[1]) : null;
+  } catch { return null; }
 }
 
 /**
@@ -2439,6 +2453,51 @@ function runSelfTest() {
 }
 
 // ════════════════════════════════════════════════
+//  --price-only — ⑥ 가격만 다시 주입
+// ════════════════════════════════════════════════
+
+/**
+ * ⑥ 가격 블록만 data.js 에 다시 넣는다. 거래량(①②③④⑤)과 generatedAt 은 그대로다.
+ *
+ * **왜 따로 두는가.** 가격 발표는 목요일 14시고 거래량 수집은 월요일이다.
+ * 목요일에 ingest.yml 전체를 부르면 RTMS 를 수천 건 다시 받고 거래량 숫자까지
+ * 주중에 바뀐다 — 주간 뉴스가 읽는 ①~⑤ 가 월요일 것과 달라진다. 그래서 가격
+ * 한 블록만 갈아 끼운다. ingest-price.yml 이 캐시를 갱신한 직후 이 모드를 부른다.
+ *
+ * **멱등하다.** 캐시의 주차가 이미 data.js 에 실린 주차와 같으면 아무것도 쓰지
+ * 않고 정상 종료한다 — 같은 주에 세 번 도는 워크플로의 정상 경로다.
+ */
+export function refreshPriceOnly() {
+  const prev = readPrevData();
+  if (!prev?.report) {
+    console.error('[ingest] data.js 에서 report 를 읽지 못했다 — 전체 수집(node ingest.mjs)을 먼저 돌려라');
+    process.exit(1);
+  }
+  const neutral = loadPriceCache();
+  if (!neutral) {
+    console.error('[ingest] 가격 캐시가 없다 — node dashboard/ingest-price.mjs 를 먼저 돌려라');
+    process.exit(1);
+  }
+  const before = prev.report.price;
+  if (before && before.weekId === neutral.weekId) {
+    console.log(`[ingest] ⑥ 가격 주차 동일(${neutral.weekId} · ${neutral.asOf} 기준) — data.js 갱신 생략`);
+    return;
+  }
+  const price = buildPriceBlock(neutral);
+  if (!price) {
+    console.error('[ingest] 가격 블록을 만들지 못했다 — 캐시에 서울 지수가 없다');
+    process.exit(1);
+  }
+  prev.report.price = price;
+  console.log(
+    `[ingest] ⑥ 가격만 갱신 — ${before ? `${before.asOf} → ` : ''}${price.asOf} 기준 · ` +
+    `서울 ${price.seoul.pct >= 0 ? '+' : ''}${price.seoul.pct}% (${price.sourceName})\n` +
+    `           거래량 수집일 ${prev.generatedAt} 은 그대로 둔다 — ①~⑤ 는 손대지 않았다`
+  );
+  inject(prev);
+}
+
+// ════════════════════════════════════════════════
 //  실 데이터 수집 메인 플로우
 // ════════════════════════════════════════════════
 
@@ -2633,6 +2692,9 @@ async function main() {
 if (isDirectRun) {
   if (process.argv.includes('--selftest')) {
     runSelfTest();
+  } else if (process.argv.includes('--price-only')) {
+    // ⑥ 만 다시 주입한다. RTMS 키가 필요 없다 — API 를 부르지 않는다.
+    refreshPriceOnly();
   } else {
     main().catch(err => {
       console.error('[ingest] 오류:', err.message);

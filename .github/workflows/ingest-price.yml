@@ -11,9 +11,21 @@
 # 비교해 판정하므로 몇 번을 돌려도 결과가 같다.
 #
 # ── 화면 반영 시점 ───────────────────────────────────
-# 이 워크플로는 **캐시만** 갱신한다. data.js 는 건드리지 않고 발행도 부르지 않는다.
-# 화면·리포트에 실리는 것은 다음 월요일 ingest.yml 의 몫이다
-# (ingest-rebuild.yml 과 같은 규칙).
+# 2026-10-09 변경. 그전까지는 **캐시만** 갱신하고 화면·리포트 반영은 다음 월요일
+# ingest.yml 에 맡겼다. 그래서 목·금에 주간 뉴스를 만들면 ⑥ 가격이 늘 한 주 전
+# 조사분이었다 — 목요일에 받아 둔 그 주 값이 캐시에만 있고 그림에는 없었다.
+#
+# 이제 캐시가 바뀌면 같은 실행에서 **⑥ 가격만** data.js 에 다시 넣고
+# (`ingest.mjs --price-only`) 리포트를 다시 그린다. 바뀌는 것은 06 뿐이다.
+#   · 거래량(①②③·추이)과 generatedAt 은 손대지 않는다 — RTMS 를 부르지 않으므로
+#     주중에 거래 건수가 흔들릴 일이 없다. 그래서 ingest.yml 전체를 부르지 않는다.
+#   · 01~05 그림도 그대로다. 데이터가 같으면 PNG 가 바이트까지 같아 커밋에 안 잡힌다.
+#   · 그림은 **그 주 월요일 날짜 폴더**(reports/<generatedAt>/06.png)와 latest/06.png
+#     를 덮어쓴다. 폴더 이름은 거래량 수집일이라 가격만 바뀐 것은
+#     manifest.json 의 price.asOf 가 알린다(date 는 그대로, asOf 만 그 주 조사일로).
+#
+# 정비사업(ingest-rebuild.yml)은 여전히 캐시만 갱신한다 — 그쪽은 월 1회라
+# 주중에 급할 일이 없다.
 name: 가격 수집
 
 on:
@@ -38,6 +50,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # 마지막의 `gh workflow run report.yml` 이 이 권한을 쓴다. 없으면 호출이
+  # HTTP 403 (Resource not accessible by integration) 으로 죽는다 — ingest.yml 과 같은 이유.
+  actions: write
 
 # 같은 주에 여러 번 도는 워크플로다. 겹쳐 돌면 캐시 파일을 두 실행이 다툰다.
 concurrency:
@@ -71,19 +86,44 @@ jobs:
           # 출력을 요약에 그대로 싣는다. "수집 완료 / 발표 전" 문구가 여기 찍힌다.
           node dashboard/ingest-price.mjs $ARGS | tee /tmp/price.log
 
+      # ⑥ 가격만 data.js 에 다시 넣는다. **캐시가 바뀌었는지와 무관하게 늘 돌린다.**
+      #
+      # 조건을 걸지 않는 이유가 둘 있다.
+      #   1) 자기 치유. 지난 회차가 캐시는 병합하고 주입 단계에서 죽었다면, 조건을
+      #      걸면 캐시가 더 바뀌지 않는 한 영영 다시 잡히지 않는다. 캐시와 data.js 가
+      #      어긋난 채 남고 그 사이 report.yml 은 verify-report 의 [가격] 캐시 대조에
+      #      걸려 계속 실패한다. 늘 돌리면 다음 회차가 알아서 메운다.
+      #   2) 수동 실행이 쓸모가 있어야 한다. 이미 받아 둔 주차를 화면에 밀어 넣는
+      #      것이 사람이 이 워크플로를 손으로 돌리는 주된 이유다.
+      #
+      # 공짜다 — API 를 부르지 않고 커밋된 가격 캐시만 읽는다(refreshPriceOnly 는
+      # 동기 함수라 네트워크를 탈 수 없다). 그래서 RTMS_SERVICE_KEY 도 넘기지 않는다.
+      # 멱등하다: 캐시 주차가 data.js 에 이미 실린 주차와 같으면 아무것도 쓰지 않는다.
+      - name: 화면 반영 (⑥ 가격만)
+        run: |
+          set -euo pipefail
+          # ingest.mjs 는 의존성이 없다 — npm ci 없이 npm run 만으로 돈다.
+          npm run price-only | tee /tmp/price-inject.log
+
+      # 캐시와 화면을 **한 번에** 본다. 캐시만 보면 "캐시는 그대로인데 화면이 밀려
+      # 있던" 회차를 놓친다(위 자기 치유의 반쪽). data.json 은 gitignored 다.
       - name: 변경 확인
         id: diff
         run: |
-          git add dashboard/.cache/price
+          git add dashboard/.cache/price dashboard/data.js dashboard/dashboard.html
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "캐시 변경 없음 — 이미 받았거나 아직 발표 전이다. 정상 종료한다"
+            echo "바뀐 것 없음 — 이미 받아 화면에도 실렸거나 아직 발표 전이다. 정상 종료한다"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "캐시 $(git diff --cached --name-only | wc -l | tr -d ' ')개 파일 변경"
+            echo "파일 $(git diff --cached --name-only | wc -l | tr -d ' ')개 변경"
+            git diff --cached --name-only | sed 's/^/  /'
           fi
 
       # main 은 ruleset 보호라 PR 로 들어간다 — 다른 수집 워크플로와 같은 경로.
+      # 캐시와 data.js 를 **한 PR 로** 넣는다. 둘을 나누면 캐시만 병합된 채
+      # data.js 주입이 빠지는 창이 생기고, 그 사이에 report.yml 이 돌면
+      # verify-report 의 [가격] 캐시 대조 검사에 걸려 리포트가 실패한다.
       - name: PR 로 반영
         if: steps.diff.outputs.changed == 'true'
         env:
@@ -102,19 +142,27 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git checkout -b "$BRANCH"
           git commit -m "data: 가격 수집 ${ASOF} 기준" \
-                     -m "한국부동산원 주간 아파트 매매가격지수. GitHub Actions 자동 수집 (실행 ${{ github.run_id }}). 캐시만 갱신한다 — 화면 반영은 다음 월요일 수집."
+                     -m "한국부동산원 주간 아파트 매매가격지수. GitHub Actions 자동 수집 (실행 ${{ github.run_id }}). 캐시 + ⑥ 가격만 반영한 data.js. 거래량과 generatedAt 은 건드리지 않았다."
           git push origin "$BRANCH"
 
           gh pr create --base main --head "$BRANCH" \
             --title "data: 가격 수집 ${ASOF} 기준" \
             --body "$(printf '%s\n' \
-              '한국부동산원 주간 아파트 매매가격지수 캐시를 갱신했다. 요구 승인이 0건이라 승인 없이 병합된다.' \
+              '한국부동산원 주간 아파트 매매가격지수 캐시를 갱신하고, ⑥ 가격만 `data.js` 에 다시 넣었다. 요구 승인이 0건이라 승인 없이 병합된다.' \
               '' \
-              '화면·리포트 반영은 다음 월요일 `ingest.yml` 이 한다(리포트 06번 그림).' \
+              '거래량(①②③·추이)과 `generatedAt` 은 그대로다 — RTMS 를 부르지 않았다.' \
+              '' \
+              '병합 뒤 `report.yml` 을 불러 06번 그림을 다시 그리고 발행까지 이어 간다.' \
               '' \
               "실행: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")"
 
           gh pr merge "$BRANCH" --squash --delete-branch
+
+          # GITHUB_TOKEN 의 병합은 push 트리거를 발동시키지 않으므로 직접 부른다
+          # (ingest.yml 과 같은 경로). report.yml 이 검증·렌더·커밋을 하고 발행까지
+          # 이어 간다 — verify-report 가 실패하면 그림도 발행도 나가지 않는다.
+          gh workflow run report.yml --ref main
+          echo "리포트 생성(report.yml) 요청 완료 — 06번만 바뀐다"
 
       - name: 결과 요약
         if: always()
@@ -123,6 +171,8 @@ jobs:
             echo "### 가격 수집"
             echo ""
             sed -n 's/^\[ingest-price\] //p' /tmp/price.log 2>/dev/null | sed 's/^/- /'
+            sed -n 's/^\[ingest\] //p' /tmp/price-inject.log 2>/dev/null | sed 's/^/- /'
             echo ""
             echo "- 캐시 변경: **${{ steps.diff.outputs.changed || 'false' }}**"
+            echo "- 바뀌는 그림: **06 (가격) 하나** — 01~05 와 거래량 숫자는 그대로"
           } >> "$GITHUB_STEP_SUMMARY"
