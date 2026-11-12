@@ -13,8 +13,8 @@
     "06"
   ],
   "price": {
-    "asOf": "2026-11-02",
-    "prevAsOf": "2026-10-26",
+    "asOf": "2026-11-09",
+    "prevAsOf": "2026-11-02",
     "sourceLabel": "출처: 한국부동산원 주간 아파트 매매가격지수",
     "stale": false,
     "seoulPct": 0.07,
