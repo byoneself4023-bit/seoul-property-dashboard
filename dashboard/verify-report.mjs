@@ -305,12 +305,21 @@ function checkPrice(rep) {
                  '`node dashboard/ingest.mjs --price-only` 로 data.js 에 다시 넣어라');
   }
 
-  // 권역을 자치구 평균으로 만들지 않았는지. 출처는 가중 지수라 단순평균과 다르다.
-  // 전부 소수점까지 똑같으면 평균으로 만든 것이다.
+  // 권역을 자치구 평균으로 만들지 않았는지 — **출처 권역 지수와 직접 대조한다.**
+  // 예전에는 「단순평균과 소수점까지 같으면 평균으로 만든 것」으로 봤지만, 출처 가중
+  // 지수가 우연히 단순평균과 같은 주가 있다(2026-11-02 주: 동남권 출처 -0.23%,
+  // 서초·강남·송파·강동 평균도 -0.23%). 그 주에 발행이 11-09부터 막혔다.
+  // 캐시에 출처 권역 지수가 있으면 그것과 같은지만 보고, 없을 때만 예전 방식으로 본다.
   const gu = Object.fromEntries((p.districts ?? []).map(d => [d.name, d.pct]));
   const EAST = ['서초구', '강남구', '송파구', '강동구'];
   const dong = (p.zones ?? []).find(z => z.name === '동남권');
-  if (dong && EAST.every(n => gu[n] !== undefined)) {
+  const srcDong = latest?.index?.['동남권'];
+  if (dong && srcDong?.cur > 0 && srcDong?.prev > 0) {
+    const srcPct = Number(((srcDong.cur / srcDong.prev - 1) * 100).toFixed(2));
+    if (srcPct !== dong.pct) {
+      fail('가격', `⑥ 동남권(${dong.pct}%)이 출처 권역 지수(${srcPct}%)와 다르다 — 출처 권역 지수를 써야 한다`);
+    }
+  } else if (dong && EAST.every(n => gu[n] !== undefined)) {
     const avg = Number((EAST.reduce((a, n) => a + gu[n], 0) / EAST.length).toFixed(2));
     if (avg === dong.pct && Math.abs(avg) > 0.005) {
       fail('가격', `⑥ 동남권(${dong.pct}%)이 자치구 단순평균과 같다 — 출처 권역 지수를 써야 한다`);
