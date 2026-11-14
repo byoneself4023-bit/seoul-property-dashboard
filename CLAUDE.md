@@ -2,7 +2,7 @@
 
 국토교통부 RTMS 실거래가 API에서 서울 25개 자치구의 주택 매매 건수를 수집·집계해
 정적 페이지 하나로 만들고, GitHub Actions가 GitHub Pages에 발행한다. 주 1회 갱신.
-라이브: https://byoneself4023-bit.github.io/seoul-property-dashboard/
+라이브: https://stats.thebarunrealty.com/ (저장소: https://github.com/thebarunrealty/seoul-trade-dashboard)
 
 **화면과 데이터는 분리돼 있다**(2026-08-12). `dashboard.html`이 `<script src="data.js">`로
 `data.js`를 읽고, `data.js`는 `window.__DASHBOARD_DATA__`에 값을 담는다. `fetch`가 아니라
